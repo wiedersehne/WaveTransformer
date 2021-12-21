@@ -1,0 +1,21 @@
+# default.yaml
+pipeline.py:
+  cn_pipeline_constructor:
+    length: 250
+    file_path: '/CNdata/ascat/ReleasedData/data_length250.pkl'
+    cancer_types: ['OV', 'STAD']                                                # Easy
+    # cancer_types: ['STAD', 'COAD']                                             # Hard 1
+    # cancer_types: ['BRCA', 'OV']                                               # Hard 2
+    # cancer_types: ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG']                         # Easy multi-class
+    # cancer_types: ['BRCA', 'OV', 'KIRP', 'PAAD', 'ACC']                        # Imbalanced multi-class
+    batch_size: 256
+    wgd: False
+
+CNNLSTM.py:
+  model_constructor:
+    bidirectional: False # True
+    lstm_dropout: 0.75
+    verbose: False
+    num_epochs: 100 # 175
+    pb_refresh: 10
+    n_hidden: 256
