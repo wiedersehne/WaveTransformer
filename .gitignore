@@ -232,7 +232,8 @@ dmypy.json
 cython_debug/
 
 # Logged runs
-!/experiments/logs/checkpoints/*.ckpt
-!/experiments/logs/embeddings/embs/*.npy
-!/experiments/logs/embeddings/imgs/*.npy
-!/experiments/logs/embeddings/tb/Experiment*/
+#!/experiments/logs/checkpoints/*.ckpt
+#!/experiments/logs/embeddings/embs/*.npy
+#!/experiments/logs/embeddings/imgs/*.npy
+#!/experiments/logs/embeddings/tb/Experiment*/
+!/experiments/logs/

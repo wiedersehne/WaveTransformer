@@ -1,6 +1,6 @@
 import pandas as pd
 import torch
-from data.pipeline import cn_pipeline_constructor
+from data.pipeline import DataModuleASCAT
 from models.CNNLSTM import model_constructor
 from sklearn.metrics import (classification_report, confusion_matrix)
 import matplotlib.pyplot as plt
@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def train():
     # Load data and filter for only the cases of interest
-    data_module = cn_pipeline_constructor()
+    data_module = DataModuleASCAT()
 
     # Create model
     model, trainer = model_constructor(n_classes=data_module.n_classes)
@@ -62,6 +62,7 @@ def test(trained_model, data_module):
 
 
 def visualise_latent(model, data_module):
+    from torchmetrics.functional import accuracy
 
     class Identity(torch.nn.Module):
         def __init__(self):
@@ -70,17 +71,14 @@ def visualise_latent(model, data_module):
             return x
 
     batch = next(iter(data_module.train_dataloader()))
-    print(batch)
+    sequences, labels = model.batch_to_data(batch)
 
+    # No head
     # Remove prediction head
-    model_ = copy.deepcopy(model)
-    model_.model.fc = Identity()
-
-    meta = model_.batch_to_data(batch)[1].detach().cpu().numpy()        # Get labels for plotting
-    x_test = model_.batch_to_data(batch)[0].to(device)
-
-    model_.write_embeddings(x=x_test.to(device))
-    model_.create_tensorboard_log(metadata=meta)
+    model_nohead = copy.deepcopy(model)
+    model_nohead.model.fc = Identity()
+    model_nohead.write_embeddings(x=sequences.to(device), y=labels)
+    model_nohead.create_tensorboard_log(metadata=labels.detach().cpu().numpy())
 
     return
 

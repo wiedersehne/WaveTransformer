@@ -14,13 +14,34 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SequenceModel(nn.Module):
 
-    def __init__(self, n_classes, n_hidden=256, n_layers=3, dropout=0.6, bidirectional=False, stack=1, out_channels=23,
-                 kernel_size=3, stride=5, padding=1):
+    def __init__(self, n_classes: int,
+                 n_hidden: int = 256,
+                 n_layers: int = 3,
+                 dropout: float = 0.6,
+                 bidirectional: bool = False,
+                 stack: int = 1,
+                 out_channels: int = 23,
+                 kernel_size: int = 3,
+                 stride: int = 5,
+                 padding: int = 1):
+        """
+
+        :param n_classes:
+        :param n_hidden:
+        :param n_layers:
+        :param dropout:
+        :param bidirectional:
+        :param stack:                           Dimension to stack chromosomes on
+        :param out_channels:
+        :param kernel_size:
+        :param stride:
+        :param padding:
+        """
         super().__init__()
         self.hidden_size = n_hidden
         self.n_layers = n_layers
         self.bidirectional = bidirectional
-        self.stack_dim = stack            # dim to stack chr on. 1)Major/min separated by feature, 2)sequences appended
+        self.stack_dim = stack                          # 1 => Major/min separated by feature. 2=> sequences appended
 
         self.conv1d_major = nn.Conv1d(
             in_channels=23,
@@ -38,7 +59,7 @@ class SequenceModel(nn.Module):
             padding=padding,
         )
         self.lstm = nn.LSTM(
-            input_size=int(50*self.stack_dim),
+            input_size=int((250/1)*self.stack_dim),
             hidden_size=n_hidden,
             num_layers=n_layers,
             batch_first=True,
@@ -63,6 +84,9 @@ class SequenceModel(nn.Module):
 
         # Concatenate either along sequence (dim=2) or feature dimension (dim=1)
         x = torch.cat([x_major, x_minor], dim=self.stack_dim)  # Stack output channels of CNN as features to LSTM
+
+        # Test skipping LSTM part
+        # return self.fc(x.reshape((x.shape[0], -1)))
 
         # LSTM layers
         self.lstm.flatten_parameters()                         # For multiple GPU cases
@@ -100,6 +124,19 @@ class PredictorCN(pl.LightningModule, ABC, EmbeddingModule):
                  stride: int = 5,
                  padding: int = 1,
                  ):
+        """
+
+        :param n_classes:
+        :param n_hidden:
+        :param n_layers:
+        :param dropout:
+        :param bidirectional:
+        :param stack:
+        :param out_channels:
+        :param kernel_size:
+        :param stride:
+        :param padding:
+        """
 
         super().__init__()
         self.n_classes = n_classes
