@@ -4,6 +4,7 @@
 
 rm -r logs/checkpoints
 rm -r logs/lightning_logs
-rm -r logs/embeddings/tb
-rm -r logs/embeddings/imgs
-rm -r logs/embeddings/embs
+rm -r logs/embeddings/tb/*
+
+#rm logs/embeddings/imgs/*
+#rm logs/embeddings/embs/*

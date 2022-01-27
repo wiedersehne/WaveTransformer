@@ -46,7 +46,7 @@ class EmbeddingModule(torch.nn.Module):
         self.writer = None
 
     def generate_embeddings(self, x):
-        '''
+        """
         Generate embeddings for an input batched tensor. Ensure head layer is removed.
 
         Args:
@@ -54,12 +54,12 @@ class EmbeddingModule(torch.nn.Module):
 
         Returns:
             (torch.Tensor): The output of self.model against x
-        '''
+        """
         embedding = self.model(x)
-        return (embedding)
+        return embedding
 
     def write_embeddings(self, x, y):
-        '''
+        """
         Generate embeddings for an input batched tensor and write inputs and
         embeddings to self.lab_folder and self.embs_folder respectively.
 
@@ -74,7 +74,7 @@ class EmbeddingModule(torch.nn.Module):
         Returns:
             (bool) : True if writing was succesful
 
-        '''
+        """
 
         assert len(os.listdir(self.lab_folder)) == 0, "Sequences folder must be empty"
         assert len(os.listdir(self.embs_folder)) == 0, "Embeddings folder must be empty"
@@ -90,16 +90,16 @@ class EmbeddingModule(torch.nn.Module):
             key = str(np.random.random())[-7:]
             np.save(self.lab_folder + r"/" + key + '.npy', y[i].detach().cpu().numpy())
             np.save(self.embs_folder + r"/" + key + '.npy', embs[i])
-        return (True)
+        return True
 
     def _create_writer(self):
-        '''
+        """
         Create a TensorboardX writer object given an experiment name and assigns it to self.writer
 
         Returns:
             (bool): True if writer was created succesfully
 
-        '''
+        """
 
         if self.name is None:
             experiment_id = len([name for name in os.listdir(self.tensorboard_folder)])
@@ -118,7 +118,7 @@ class EmbeddingModule(torch.nn.Module):
 
         logdir = dir_name
         self.writer = SummaryWriter(logdir=logdir)
-        return (True)
+        return True
 
     def create_tensorboard_log(self, metadata=None):
 
