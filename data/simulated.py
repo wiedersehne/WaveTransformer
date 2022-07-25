@@ -52,7 +52,7 @@ def _load_mdp(length=20, steps=5, n=1000, file_path=None):
             samples = copy.deepcopy(samples)
             for i in range(n_):
                 idx_transition = np.random.choice(len(kernel_), p=[transition[0] for transition in kernel_])
-                samples[i, :] += kernel_[idx_transition][1] + noise(0.1)
+                samples[i, :] += kernel_[idx_transition][1] + noise(0.001)
             chain.append(samples)
         return chain
 
@@ -64,10 +64,11 @@ def _load_mdp(length=20, steps=5, n=1000, file_path=None):
             print(f"Could not load pickled dataframe from path {FILE_PATH + file_path}, creating new...")
 
     # Build custom transition kernel.
-    classes = 5
-    num_shared, num_each, max_width = 0, 1, 5
+    classes = 2
+    num_shared, num_each, max_width = 0, 2, 5
 
     shared_basis = [sample_transition1(length, max_width_=max_width) for _ in range(num_shared)]
+
     def make_kernel(_num_shared, _num_each, _max_width):
         return list(zip([1. / _num_each for _ in range(_num_each)],
                         shared_basis + [sample_transition1(length, max_width_=_max_width)
@@ -124,14 +125,13 @@ def _load_mdp(length=20, steps=5, n=1000, file_path=None):
     # Put into dataframe
     frame = pd.DataFrame(samples, columns=[f't{i}' for i in range(steps+1)])
     frame['labels'] = labels
-    #frame["labels"] = pd.to_numeric(frame["labels"], downcast="integer")
     frame["labels"] = frame["labels"].astype("category")
 
     # Save frame to file_path
     if file_path is not None:
         pd.to_pickle(frame, FILE_PATH + file_path)
 
-    return frame
+    return frame, kernels
 
 
 def _setup_mdp(data_frame):
@@ -162,10 +162,12 @@ def _setup_mdp(data_frame):
     return data_frame, (train_df, val_df, test_df), weight_dict, label_encoder
 
 
-def load_mdp(length=50, steps=5, n=10000, file_path=None):
-    return _setup_mdp(_load_mdp(length=length, steps=steps, n=n, file_path=file_path))
+def load_mdp(length=25, steps=5, n=10000, file_path=None):
+    df, kernels = _load_mdp(length=length, steps=steps, n=n, file_path=file_path)
+    data_frame, (train_df, val_df, test_df), weight_dict, label_encoder = _setup_mdp(df)
+    return data_frame, (train_df, val_df, test_df), weight_dict, label_encoder, kernels
 
 
 if __name__ == '__main__':
 
-    frame, (df_train, df_val, df_test), train_weights, label_encoder = load_mdp()
+    frame, (df_train, df_val, df_test), train_weights, label_encoder, kernels = load_mdp()

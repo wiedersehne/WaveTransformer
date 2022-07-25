@@ -1,3 +1,5 @@
+import logging
+
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import pytorch_lightning as pl
@@ -70,9 +72,25 @@ class _DataModuleMDP(pl.LightningDataModule, ABC):
     """
 
     """
+    @staticmethod
+    def simulated():
+        return True
+
     @property
     def n_classes(self):
         return len(self.label_encoder.classes_)
+
+    @property
+    def bases(self):
+        if self.kernels is None:
+            logging.warning("This is not a simulated example: True bases are not known")
+        return self.kernels
+
+    @property
+    def n_bases(self):
+        if self.kernels is None:
+            logging.critical("This is not a simulated example: True bases are not known")
+        return np.sum([len(k) for k in self.kernels])
 
     @property
     def seq_length(self):
@@ -89,10 +107,11 @@ class _DataModuleMDP(pl.LightningDataModule, ABC):
         self.label_encoder = None
         self.training_set, self.validation_set, self.test_set = None, None, None
         self.training_sampler, self.train_shuffle = None, None
+        self.kernels = None                        # If simulated model with known bases (TODO: or later learnt bases)
 
     def prepare_data(self):
         # Download, filter, format, split
-        _, (self.train_df, self.val_df, self.test_df), self.weight_dict, self.label_encoder = \
+        _, (self.train_df, self.val_df, self.test_df), self.weight_dict, self.label_encoder, self.kernels = \
             load_mdp(length=self.length, file_path=self.file_path)
 
     def setup(self, stage=None):

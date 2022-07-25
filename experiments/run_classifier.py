@@ -1,6 +1,6 @@
 import pandas as pd
 import torch
-from models.classifier import model_constructor
+from source.classifier import model_constructor
 from sklearn.metrics import (classification_report, confusion_matrix)
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -65,7 +65,9 @@ def visualise_latent(model, data_module):
     class Identity(torch.nn.Module):
         def __init__(self):
             super(Identity, self).__init__()
-        def forward(self, x):
+
+        @staticmethod
+        def forward(x):
             return x
 
     # TODO: plot _all_ data, train+test+val
@@ -110,4 +112,4 @@ if __name__ == '__main__':
     # TODO: Build unsupervised model
     # TODO: Remove relative imports and add package imports
 
-    main()
+    main(experiment='ascat')

@@ -127,6 +127,10 @@ class _DataModuleASCAT(pl.LightningDataModule, ABC):
     """
 
     """
+    @staticmethod
+    def simulated():
+        return False
+
     @property
     def n_classes(self):
         return len(self.label_encoder.classes_)
@@ -220,7 +224,7 @@ def main_test():
     for key in loader_list:
         print(f'{key} set\n=============')
         for batch_idx, batch in enumerate(loader_list[key]):
-            print(f'\nBatch test index {batch_idx}')
+            print(f'\nBatch {key} index {batch_idx}')
             print(f"cancer type counts {torch.unique(batch['label'], return_counts=True)}")
             print(f"input shape {batch['feature'].shape}")
             print(f"output shape {batch['label'].shape}")
