@@ -1,156 +1,50 @@
-import logging
 from abc import ABC
 import numpy as np
+# Torch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+# PyTorch-lightning
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+# Local
 from experiments.configs.config import extern
-from .embedding_module import EmbeddingModule
-from .classifier import SequenceModel
+from source.models.sequence_encoder import SequenceEncoder
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class LinearEncoder(nn.Module):
-    def __init__(self, in_features, out_features, **kwargs):
-        super().__init__()
-        self.encoder1 = nn.Linear(in_features=in_features, out_features=64)
-        self.enc1 = nn.Linear(in_features=64, out_features=264)
-        self.enc2 = nn.Linear(in_features=264, out_features=264)
-        self.enc3 = nn.Linear(in_features=264, out_features=64)
-        self.encoder2 = nn.Linear(in_features=64, out_features=out_features)
+class VanillaVAE(pl.LightningModule, ABC):
 
-    def forward(self, x):
-        x = F.relu(self.encoder1(x))
-        x = F.relu(self.enc3(F.relu(self.enc2(F.relu(self.enc1(x))))))
-
-        x = self.encoder2(x)
-        return x
-
-
-class LinearDecoder(nn.Module):
-    def __init__(self, in_features, out_features, **kwargs):
-        super().__init__()
-        self.decoder1 = nn.Linear(in_features=in_features, out_features=64)
-        self.dec1 = nn.Linear(in_features=64, out_features=264)
-        self.dec2 = nn.Linear(in_features=264, out_features=264)
-        self.dec3 = nn.Linear(in_features=264, out_features=64)
-        self.decoder2 = nn.Linear(in_features=64, out_features=out_features)
-
-    def forward(self, x):
-        x = F.relu(self.decoder1(x))
-        x = F.relu(self.dec3(F.relu(self.dec2(F.relu(self.dec1(x))))))
-        channel1 = torch.sigmoid(self.decoder2(x))
-        return channel1
-
-
-class CoefficientDecoder(nn.Module):
-    def __init__(self, in_features, seq_length, kernels):
-        super().__init__()
-        # unzip all bases from kernels
-        bases = np.stack([[base[1] for base in class_kernels] for class_kernels in kernels])
-        self.bases = torch.Tensor(bases.reshape((-1, seq_length))).to(device)
-
-        self.decoder1 = nn.Linear(in_features=in_features, out_features=64)
-        self.dec1 = nn.Linear(in_features=64, out_features=64)
-        self.dec2 = nn.Linear(in_features=64, out_features=64)
-        self.dec3 = nn.Linear(in_features=64, out_features=64)
-        self.decoder2 = nn.Linear(in_features=64, out_features=self.bases.shape[0])
-
-    def forward(self, x):
-
-        x = F.relu(self.decoder1(x))
-
-        x = self.dec1(self.dec2(self.dec3(x)))
-
-        z = self.decoder2(x)
-        channel1 = torch.zeros((z.shape[0], self.bases.shape[1])).to(device)
-        for idx_base in range(self.bases.shape[0]):
-            for idx_n in range(channel1.shape[0]):
-                channel1[idx_n, :] += z[idx_n, idx_base] * self.bases[idx_base, :]
-
-
-        #channel1 = torch.matmul(channel1, self.bases)
-
-        #channel2 = F.relu(self.decoder2_2(x))
-        #channel2 = torch.matmul(channel2, self.bases)
-
-        #reconstruction = torch.stack([channel1, channel1], dim=2)
-        #reconstruction = reconstruction.unsqueeze(2)
-        return channel1
-
-
-class VanillaVAE(pl.LightningModule, ABC, EmbeddingModule):
-
-    def __init__(self, seq_length: int,
+    def __init__(self,
+                 encoder_setup: dict,
+                 decoder_model,
                  latent_dim: int,
-                 kernels=None,
-                 enc_hidden: int = 256,
-                 n_layers: int = 3,
-                 dropout: float = 0,
-                 bidirectional: bool = True,
-                 stack: int = 1,
-                 in_channels: int = 23,
-                 out_channels: int = 23,
-                 kernel_size: int = 3,
-                 stride: int = 5,
-                 padding: int = 1,
+                 kld_weight=None,
                  ):
         """
 
-        :param latent_dim:
-        :param enc_hidden:
-        :param n_layers:
-        :param dropout:
-        :param bidirectional:
-        :param stack:
-        :param out_channels:
-        :param kernel_size:
-        :param stride:
-        :param padding:
-        """
-        self.auto_encoder = True
 
-        self.h_dim = latent_dim
-        self.seq_length = seq_length
-        self.kernels = kernels
+        """
 
         super().__init__()
+        self.kld_weight = kld_weight
+        self.save_hyperparameters()
 
-        # Encoder - (Bidirectional) LSTM
-        self.kw_dict = {"n_hidden": enc_hidden,
-                        "n_layers": n_layers,
-                        "dropout": dropout,
-                        "bidirectional": bidirectional,
-                        "stack": stack,
-                        "in_channels": in_channels,
-                        "out_channels": out_channels,
-                        "kernel_size": kernel_size,
-                        "stride": stride,
-                        "padding": padding
-                        }
-        self.encoder = SequenceModel(seq_length=self.seq_length, n_classes=self.h_dim, **self.kw_dict)
-        self.fc_mu = nn.Linear(self.h_dim, self.h_dim)
-        self.fc_var = nn.Linear(self.h_dim, self.h_dim)
+        # Encoder
+        self.encoder = SequenceEncoder(**encoder_setup)
+        self.fc_mu = nn.Linear(latent_dim, latent_dim)
+        self.fc_var = nn.Linear(latent_dim, latent_dim)
 
         # Decoder
-        if self.kernels is not None:
-            print("Using Co-efficient decoder, learning co-efficients of known basis")
-            self.decoder = CoefficientDecoder(in_features=self.h_dim, seq_length=self.seq_length, kernels=self.kernels)
-        else:
-            print("Using linear decoder")
-            self.decoder = LinearDecoder(in_features=self.h_dim, out_features=self.seq_length)
-
-        self.criterion = nn.MSELoss()
+        self.decoder = decoder_model
 
     def load_checkpoint(self, path):
-        arg_dict = {"latent_dim": self.h_dim, "seq_length": self.seq_length, "kernels": self.kernels}
-        return self.load_from_checkpoint(path, **arg_dict, **self.kw_dict)
+        return self.load_from_checkpoint(path)
 
     def encode(self, x: torch.tensor):
         """
@@ -186,10 +80,9 @@ class VanillaVAE(pl.LightningModule, ABC, EmbeddingModule):
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         recon = self.decode(z)
-        print(recon.shape)
-        return [recon, x[:, :, 1, 0], mu, log_var]
+        return [recon, x[:, 0, 0, :], mu, log_var]
 
-    def loss_function(self, *args, **kwargs) -> dict:
+    def loss_function(self, *args) -> dict:
         """
         Computes the VAE loss function.
         KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
@@ -200,8 +93,7 @@ class VanillaVAE(pl.LightningModule, ABC, EmbeddingModule):
         # self.plot_results(args)
 
         recons, input, mu, log_var = args[0], args[1], args[2], args[3]
-        print(input.shape)
-        kld_weight = 64  # TODO: kwargs['M_N']  # Account for the minibatch samples from the dataset
+        kld_weight = input.size(0) if self.kld_weight is None else self.kld_weight
         recons_loss = F.mse_loss(input, recons)
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
         loss = recons_loss + kld_weight * kld_loss
@@ -263,27 +155,13 @@ class VanillaVAE(pl.LightningModule, ABC, EmbeddingModule):
         }
 
 
-@extern
-def model_constructor(latent_dim, seq_length, kernels=None, bidirectional=True, lstm_dropout=0., dir_path="./experiments/logs",
-                      verbose=False, monitor="val_loss", mode="min", num_epochs=100, gpus=1, pb_refresh=10,
-                      enc_hidden=256, n_layers=3, stack=1, in_channels=23, out_channels=23, kernel_size=3, stride=5,
-                      padding=1):
+def create_vanilla_vae(encoder_setup, decoder_model, latent_dim, kld_weight,
+                       dir_path="./experiments/logs", verbose=False, monitor="val_loss", mode="min",
+                       num_epochs=100, gpus=1, pb_refresh=10,
+                       ):
     """Wrapper. Decorated for .yaml configuration and readability """
-    model_ = VanillaVAE(
-        latent_dim=latent_dim,
-        seq_length=seq_length,
-        kernels=kernels,
-        enc_hidden=enc_hidden,
-        n_layers=n_layers,
-        dropout=lstm_dropout,
-        bidirectional=bidirectional,
-        stack=stack,
-        in_channels=in_channels,
-        out_channels=out_channels,
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding
-    )
+    model_ = VanillaVAE(encoder_setup=encoder_setup, decoder_model=decoder_model,
+                        latent_dim=latent_dim, kld_weight=kld_weight)
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=dir_path + "/checkpoints",
