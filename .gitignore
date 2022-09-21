@@ -237,3 +237,7 @@ cython_debug/
 #!/experiments/logs/embeddings/imgs/*.npy
 #!/experiments/logs/embeddings/tb/Experiment*/
 !/experiments/logs/
+/experiments/configs/logs
+/experiments/experiments
+/experiments/wandb
+/data

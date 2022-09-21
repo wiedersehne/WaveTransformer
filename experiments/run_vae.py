@@ -70,8 +70,10 @@ def main(simulated=False):
 
     # Load data and filter for only the cases of interest
     if simulated:
+        import numpy as np
         dm = simulated_dm()
         chrom_channels, out_channels = 1, 1
+        stacked_bases = np.vstack(dm.bases)
     else:
         dm = ascat_dm()
         chrom_channels, out_channels = 23, 23
@@ -95,8 +97,8 @@ def main(simulated=False):
                   }
 
     # Create decoder
-    # decoder = CoefficientDecoder(in_features=latent_dimension, seq_length=20, kernels=dm.bases)
-    decoder = LinearDecoder(in_features=latent_dimension, out_features=1000)
+    decoder = CoefficientDecoder(in_features=latent_dimension, bases=stacked_bases)
+    # decoder = LinearDecoder(in_features=latent_dimension, out_features=20)
 
     # Create model
     model, trainer = create_vanilla_vae(encoder_setup=setup_dict, decoder_model=decoder,
@@ -105,7 +107,7 @@ def main(simulated=False):
 
     # Train model
     trainer.fit(model, datamodule=dm)
-    trained_model = model.load_checkpoint(trainer.checkpoint_callback.best_model_path).to(device)
+    trained_model = model.load_checkpoint(trainer.checkpoint_callback.best_model_path)
     trained_model.freeze()
 
     # Test model
@@ -114,4 +116,4 @@ def main(simulated=False):
 
 if __name__ == '__main__':
 
-    main(simulated=False)
+    main(simulated=True)
