@@ -115,7 +115,7 @@ def main(simulated=False):
 
     # Create model
     model, trainer = create_classifier(network_setup=setup_dict,
-                                       # validation_hook_batch=next(iter(dm.train_dataloader())),
+                                       # validation_hook_batch=next(iter(dm.val_dataloader())),
                                        )
     # Train model
     trainer.fit(model, datamodule=dm)

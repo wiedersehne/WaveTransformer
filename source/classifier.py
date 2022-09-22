@@ -12,9 +12,8 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 # Torchmetrics
 from torchmetrics.functional import accuracy
 # Local
-from experiments.configs.config import extern
 from source.models.sequence_encoder import SequenceEncoder
-from source.custom_callbacks.classifier_callbacks import ValSeq
+from source.custom_callbacks.classifier_callbacks import SequencePrediction
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,8 +25,6 @@ class Classifier(pl.LightningModule, ABC):
         """
         super().__init__()
         self.save_hyperparameters()
-
-        # self.network_setup = network_setup
         self.model = SequenceEncoder(**network_setup)
 
     def load_checkpoint(self, path):
@@ -40,7 +37,6 @@ class Classifier(pl.LightningModule, ABC):
         sequences, labels = batch['feature'], batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = F.nll_loss(logits, labels)
-
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("train_loss", loss, prog_bar=True, logger=True)
@@ -51,7 +47,6 @@ class Classifier(pl.LightningModule, ABC):
         sequences, labels = batch['feature'], batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = F.nll_loss(logits, labels)
-
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("val_loss", loss, prog_bar=True, logger=True)
@@ -62,7 +57,6 @@ class Classifier(pl.LightningModule, ABC):
         sequences, labels = batch['feature'], batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = F.nll_loss(logits, labels)
-
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("test_loss", loss, prog_bar=True, logger=True)
@@ -87,7 +81,7 @@ class Classifier(pl.LightningModule, ABC):
 
 def create_classifier(network_setup,
                       dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
-                      num_epochs=100, gpus=1, pb_refresh=10,
+                      num_epochs=100, gpus=1,
                       validation_hook_batch=None):
     """ Decorated classifier model wrapper """
 
@@ -113,7 +107,7 @@ def create_classifier(network_setup,
 
     callbacks = [checkpoint_callback, early_stop_callback]
     if validation_hook_batch is not None:
-        callbacks = callbacks + [ValSeq(validation_hook_batch)]
+        callbacks.append(SequencePrediction(validation_hook_batch))
 
     _trainer = pl.Trainer(
         default_root_dir=dir_path,
@@ -123,7 +117,6 @@ def create_classifier(network_setup,
         max_epochs=num_epochs,
         check_val_every_n_epoch=1,
         gpus=gpus,
-        progress_bar_refresh_rate=pb_refresh,
     )
 
     return _model, _trainer

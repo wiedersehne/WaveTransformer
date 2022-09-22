@@ -6,8 +6,9 @@ import wandb
 import random
 import math
 
+
 # Create custom callback for viewing sequences at the end of each validation epoch
-class ValSeq(Callback):
+class SequencePrediction(Callback):
     def __init__(self, val_samples, num_samples=16):
         super().__init__()
         self.num_samples = num_samples

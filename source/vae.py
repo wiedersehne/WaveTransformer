@@ -8,12 +8,13 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 # PyTorch-lightning
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 # Local
-from experiments.configs.config import extern
 from source.models.sequence_encoder import SequenceEncoder
-
+from source.custom_callbacks.vae_callbacks import LatentSpace
+from source.custom_callbacks.vae_callbacks import FeatureSpace1d
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,10 +27,6 @@ class VanillaVAE(pl.LightningModule, ABC):
                  latent_dim: int,
                  kld_weight=None,
                  ):
-        """
-
-
-        """
 
         super().__init__()
         self.kld_weight = kld_weight
@@ -90,8 +87,6 @@ class VanillaVAE(pl.LightningModule, ABC):
         :param kwargs:
         :return:
         """
-        # self.plot_results(args)
-
         recons, input, mu, log_var = args[0], args[1], args[2], args[3]
         kld_weight = input.size(0) if self.kld_weight is None else self.kld_weight
         recons_loss = F.mse_loss(input, recons)
@@ -99,25 +94,13 @@ class VanillaVAE(pl.LightningModule, ABC):
         loss = recons_loss + kld_weight * kld_loss
         return {'loss': loss, 'Reconstruction_Loss': recons_loss.detach(), 'KLD': -kld_loss.detach()}
 
-    @staticmethod
-    def plot_results(results):
-        import matplotlib.pyplot as plt
-        plt_idx = np.random.randint(0, results[0].shape[0])
-        plt.scatter(np.linspace(0, 20, 20), results[1].detach().cpu()[plt_idx, :])
-        plt.scatter(np.linspace(0, 20, 20), results[0].detach().cpu()[plt_idx, :].cpu())
-        plt.pause(0.1)
-        plt.close()
-
     def training_step(self, batch, batch_idx):
-        # print(batch['feature'].shape)    # N x seq_len x seg_length=1 x num_channels=2
-        # print(batch['label'].shape)      # N
         sequences, labels = batch['feature'], batch['label']
         results = self(sequences)
         train_loss_dict = self.loss_function(*results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
         self.log("train_recon_loss", train_loss_dict['Reconstruction_Loss'], prog_bar=True, logger=True)
         self.log("train_KLD", train_loss_dict['KLD'], prog_bar=True, logger=True)
-        #self.plot_results(results)
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
@@ -127,7 +110,6 @@ class VanillaVAE(pl.LightningModule, ABC):
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
         self.log("val_recon_loss", val_loss_dict['Reconstruction_Loss'], prog_bar=True, logger=True)
         self.log("val_KLD", val_loss_dict['KLD'], prog_bar=True, logger=True)
-        #self.plot_results(results)
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
@@ -144,7 +126,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 1,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "frequency": 10,                     # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -156,12 +138,15 @@ class VanillaVAE(pl.LightningModule, ABC):
 
 
 def create_vanilla_vae(encoder_setup, decoder_model, latent_dim, kld_weight,
-                       dir_path="./experiments/logs", verbose=False, monitor="val_loss", mode="min",
-                       num_epochs=100, gpus=1, pb_refresh=10,
-                       ):
-    """Wrapper. Decorated for .yaml configuration and readability """
-    model_ = VanillaVAE(encoder_setup=encoder_setup, decoder_model=decoder_model,
+                       dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
+                       num_epochs=100, gpus=1,
+                       validation_hook_batch=None):
+
+    _model = VanillaVAE(encoder_setup=encoder_setup, decoder_model=decoder_model,
                         latent_dim=latent_dim, kld_weight=kld_weight)
+
+    # Initialize wandb logger
+    wandb_logger = WandbLogger(project='Vanilla Beta-VAE', job_type='train')
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=dir_path + "/checkpoints",
@@ -175,18 +160,26 @@ def create_vanilla_vae(encoder_setup, decoder_model, latent_dim, kld_weight,
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         # min_delta=0.00,
-        patience=5,
+        patience=10,
         verbose=verbose
     )
 
-    trainer_ = pl.Trainer(
+    callbacks = [checkpoint_callback, early_stop_callback]
+    # If we pass set of validation samples, add their callbacks
+    if validation_hook_batch is not None:
+        callbacks.append(LatentSpace(validation_hook_batch))
+        callbacks.append(FeatureSpace1d(validation_hook_batch))
+    # If we pass a set of test samples, add their callbacks
+    # TODO
+
+    _trainer = pl.Trainer(
         default_root_dir=dir_path,
-        callbacks=[checkpoint_callback, early_stop_callback],
+        logger=wandb_logger,
+        callbacks=callbacks,
         checkpoint_callback=True,
         max_epochs=num_epochs,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=10,
         gpus=gpus,
-        progress_bar_refresh_rate=pb_refresh,
     )
 
-    return model_, trainer_
+    return _model, _trainer

@@ -72,15 +72,18 @@ def main(simulated=False):
     if simulated:
         import numpy as np
         dm = simulated_dm()
+        # TODO: add these (and below) as properties in the submodule's datamodules
         chrom_channels, out_channels = 1, 1
         stacked_bases = np.vstack(dm.bases)
+        seq_length = 20
+        latent_dimension = stacked_bases.shape[0]
     else:
         dm = ascat_dm()
         chrom_channels, out_channels = 23, 23
+        seq_length = 1000
+        latent_dimension = 20
 
     print(dm)
-
-    latent_dimension = 6
 
     # Encoder setup
     setup_dict = {"n_classes": latent_dimension,
@@ -97,12 +100,13 @@ def main(simulated=False):
                   }
 
     # Create decoder
-    decoder = CoefficientDecoder(in_features=latent_dimension, bases=stacked_bases)
-    # decoder = LinearDecoder(in_features=latent_dimension, out_features=20)
+    # decoder = CoefficientDecoder(in_features=latent_dimension, bases=stacked_bases)
+    decoder = LinearDecoder(in_features=latent_dimension, out_features=seq_length)
 
     # Create model
     model, trainer = create_vanilla_vae(encoder_setup=setup_dict, decoder_model=decoder,
-                                        latent_dim=latent_dimension, kld_weight=1.,
+                                        latent_dim=latent_dimension, kld_weight=0.,
+                                        validation_hook_batch=next(iter(dm.val_dataloader())),
                                         )
 
     # Train model
@@ -116,4 +120,4 @@ def main(simulated=False):
 
 if __name__ == '__main__':
 
-    main(simulated=True)
+    main(simulated=False)
