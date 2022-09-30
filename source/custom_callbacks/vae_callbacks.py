@@ -50,7 +50,7 @@ class LatentSpace(Callback):
 
 class FeatureSpace1d(Callback):
     """
-    Callback on validation epoch end, plotting the first two principal components of the variational latent means
+    Callback on validation epoch end, plotting predictions, as heatmap and as individual line plots
     """
     def __init__(self, val_samples, num_samples=8):
         super().__init__()
@@ -72,7 +72,7 @@ class FeatureSpace1d(Callback):
         sns.heatmap(truth, ax=ax2, cmap='Blues', vmax=vmax, yticklabels=labels)
         for ax in [ax1, ax2]:
             ax.set_xlabel("Locus")
-            ax.set_ylabel("Permuted index (by label)")
+            ax.set_ylabel("Sample index (permuted by label)")
             ax.xaxis.set_tick_params(rotation=90)
             for idx, label in enumerate(ax.yaxis.get_ticklabels()):
                 if idx % 5 != 0:
@@ -83,16 +83,36 @@ class FeatureSpace1d(Callback):
         plt.tight_layout()
         return fig
 
+    @staticmethod
+    def single_prediction(prediction, truth, label):
+        fig, (ax) = plt.subplots(ncols=1, figsize=(6, 4))
+        locus_pos = np.linspace(1, prediction.shape[0], prediction.shape[0])
+        sns.lineplot(x=locus_pos, y=prediction, ax=ax)
+        sns.lineplot(x=locus_pos, y=truth, ax=ax)
+        ax.set_xlabel("Locus")
+        ax.set_ylabel("Count Number")
+        ax.xaxis.set_tick_params(rotation=90)
+        ax.set_title("Validation sample, prediction vs. truth")
+        plt.tight_layout()
+        return fig
+
     def on_validation_epoch_end(self, trainer, pl_module):
-        val_features = self.val_features.to(device=pl_module.device)    # TODO: Needed?
+        val_features = self.val_features.to(device=pl_module.device)
         val_labels = self.val_labels.to(device=pl_module.device)
-        # Push validation features through model
-        recon_val, x_val, mu_val, log_var_val = pl_module(val_features)
+
+        recon_val, x_val, mu_val, log_var_val = pl_module(val_features)       # Push validation features through model
 
         recon_val = np.asarray(recon_val.detach().cpu())
         x_val = np.asarray(x_val.detach().cpu())
         val_labels_det = np.asarray(val_labels.detach().cpu(), dtype=np.int)
 
         trainer.logger.experiment.log({
-            "Validation_FeatureSpace1d": wandb.Image(self.heatmap(recon_val, x_val, val_labels_det))
+            "Validation_PredictionHeatmap": wandb.Image(self.heatmap(recon_val, x_val, val_labels_det))
+        })
+
+        trainer.logger.experiment.log({
+            "Validation_PredictionSingle": [wandb.Image(self.single_prediction(recon_val[i, :],
+                                                                               x_val[i, :],
+                                                                               val_labels_det[i]))
+                                            for i in range(self.num_samples)]
         })
