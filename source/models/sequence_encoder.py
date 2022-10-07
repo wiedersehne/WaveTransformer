@@ -7,7 +7,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class SequenceEncoder(nn.Module):
 
     def __init__(self,
-                 n_classes: int,
+                 out_dim: int,
                  n_hidden: int = 256,
                  n_layers: int = 3,
                  dropout: float = 0.6,
@@ -20,7 +20,7 @@ class SequenceEncoder(nn.Module):
                  padding: int = 1):
         """
 
-        :param n_classes:
+        :param out_dim:
         :param n_hidden:
         :param n_layers:
         :param dropout:
@@ -64,9 +64,9 @@ class SequenceEncoder(nn.Module):
 
         self.activation = torch.nn.ReLU()
         if bidirectional is False:
-            self.fc = nn.Linear(n_hidden, n_classes)
+            self.fc = nn.Linear(n_hidden, out_dim)
         else:
-            self.fc = nn.Linear(2 * n_hidden, n_classes)
+            self.fc = nn.Linear(2 * n_hidden, out_dim)
 
     def forward(self, x):
         # Take in batch_size x num_strands x num_chromosomes x sequence_length

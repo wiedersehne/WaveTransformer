@@ -100,10 +100,10 @@ def main(simulated=False):
     print(dm)
 
     # Classifier setup
-    setup_dict = {"n_classes": dm.num_cancer_types,
+    setup_dict = {"out_dim": dm.num_cancer_types,
                   "n_hidden": 128,
                   "n_layers": 3,
-                  "dropout": 0.,
+                  "dropout": 0.6,
                   "bidirectional": True,
                   "stack": 1,
                   "in_channels": chrom_channels,

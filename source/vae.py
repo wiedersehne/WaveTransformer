@@ -1,5 +1,4 @@
 from abc import ABC
-import numpy as np
 # Torch
 import torch
 import torch.nn as nn
@@ -12,7 +11,6 @@ from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 # Local
-from source.models.sequence_encoder import SequenceEncoder
 from source.custom_callbacks.vae_callbacks import LatentSpace
 from source.custom_callbacks.vae_callbacks import FeatureSpace1d
 
@@ -22,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class VanillaVAE(pl.LightningModule, ABC):
 
     def __init__(self,
-                 encoder_setup: dict,
+                 encoder_model,
                  decoder_model,
                  latent_dim: int,
                  kld_weight=None,
@@ -33,7 +31,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         self.save_hyperparameters()
 
         # Encoder
-        self.encoder = SequenceEncoder(**encoder_setup)
+        self.encoder = encoder_model
         self.fc_mu = nn.Linear(latent_dim, latent_dim)
         self.fc_var = nn.Linear(latent_dim, latent_dim)
 
@@ -47,7 +45,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         """
         Encodes the input by passing through the encoder network
         and returns the latent codes.
-        :param x: (Tensor) Input tensor to encoder [N x L x C x 2]
+        :param x: (Tensor) Input tensor to encoder
         :return: (Tensor) List of latent codes
         """
         hidden = self.encoder(x)
@@ -57,13 +55,14 @@ class VanillaVAE(pl.LightningModule, ABC):
         """
         Maps the given latent codes onto the image space.
         :param z: (Tensor) [B x D]
-        :return: (Tensor) [B x C x H x W]
+        :return: (Tensor) [B x Strands x Chromosomes x L]
         """
         return self.decoder(z)
 
-    def reparameterize(self, mu: torch.tensor, logvar: torch.tensor):
+    @staticmethod
+    def reparameterize(mu: torch.tensor, logvar: torch.tensor):
         """
-        Reparameterization trick to sample from N(mu, var) from
+        Re-parameterization trick to sample from N(mu, var) from
         N(0,1).
         :param mu: (Tensor) Mean of the latent Gaussian [B x D]
         :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
@@ -77,7 +76,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         recon = self.decode(z)
-        return [recon, x[:, 0, 0, :], mu, log_var]
+        return [recon, x, mu, log_var]
 
     def loss_function(self, *args) -> dict:
         """
@@ -89,10 +88,10 @@ class VanillaVAE(pl.LightningModule, ABC):
         """
         recons, input, mu, log_var = args[0], args[1], args[2], args[3]
         kld_weight = input.size(0) if self.kld_weight is None else self.kld_weight
-        recons_loss = F.mse_loss(input, recons)
+        recons_loss = F.mse_loss(torch.flatten(input, start_dim=1), torch.flatten(recons, start_dim=1))
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
         loss = recons_loss + kld_weight * kld_loss
-        return {'loss': loss, 'Reconstruction_Loss': recons_loss.detach(), 'KLD': -kld_loss.detach()}
+        return {'loss': loss, 'Reconstruction_Loss': recons_loss.detach(), 'KLD_Loss': kld_loss.detach()}
 
     def training_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
@@ -100,7 +99,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         train_loss_dict = self.loss_function(*results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
         self.log("train_recon_loss", train_loss_dict['Reconstruction_Loss'], prog_bar=True, logger=True)
-        self.log("train_KLD", train_loss_dict['KLD'], prog_bar=True, logger=True)
+        self.log("train_KLD", train_loss_dict['KLD_Loss'], prog_bar=True, logger=True)
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
@@ -109,7 +108,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         val_loss_dict = self.loss_function(*results)
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
         self.log("val_recon_loss", val_loss_dict['Reconstruction_Loss'], prog_bar=True, logger=True)
-        self.log("val_KLD", val_loss_dict['KLD'], prog_bar=True, logger=True)
+        self.log("val_KLD", val_loss_dict['KLD_Loss'], prog_bar=True, logger=True)
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
@@ -118,7 +117,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         test_loss_dict = self.loss_function(*results)
         self.log("test_loss", test_loss_dict['loss'], prog_bar=True, logger=True)
         self.log("test_recon_loss", test_loss_dict['Reconstruction_Loss'], prog_bar=True, logger=True)
-        self.log("test_KLD", test_loss_dict['KLD'], prog_bar=True, logger=True)
+        self.log("test_KLD", test_loss_dict['KLD_Loss'], prog_bar=True, logger=True)
         return test_loss_dict['loss']
 
     def configure_optimizers(self):
@@ -137,12 +136,12 @@ class VanillaVAE(pl.LightningModule, ABC):
         }
 
 
-def create_vanilla_vae(encoder_setup, decoder_model, latent_dim, kld_weight,
+def create_vanilla_vae(encoder_model, decoder_model, latent_dim, kld_weight,
                        dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
                        num_epochs=100, gpus=1,
                        validation_hook_batch=None):
 
-    _model = VanillaVAE(encoder_setup=encoder_setup, decoder_model=decoder_model,
+    _model = VanillaVAE(encoder_model=encoder_model, decoder_model=decoder_model,
                         latent_dim=latent_dim, kld_weight=kld_weight)
 
     # Initialize wandb logger

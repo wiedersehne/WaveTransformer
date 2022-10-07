@@ -61,13 +61,17 @@ class FeatureSpace1d(Callback):
 
     @staticmethod
     def heatmap(prediction, truth, labels):
+        # Stack chromosomes
+        prediction = np.hstack([prediction[:, chromosome, :] for chromosome in range(prediction.shape[1])])
+        truth = np.hstack([truth[:, chromosome, :] for chromosome in range(truth.shape[1])])
+
         permute_idx = np.argsort(labels)
         prediction = prediction[permute_idx, :]
         truth = truth[permute_idx, :]
         labels = labels[permute_idx]
 
-        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 4))
-        vmax = np.max((truth.max(), prediction.max()))
+        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(24, 4))
+        vmax = np.min((5, np.max((truth.max(), prediction.max()))))
         sns.heatmap(prediction, ax=ax1, cmap='Blues', vmax=vmax, yticklabels=labels)
         sns.heatmap(truth, ax=ax2, cmap='Blues', vmax=vmax, yticklabels=labels)
         for ax in [ax1, ax2]:
@@ -78,8 +82,8 @@ class FeatureSpace1d(Callback):
                 if idx % 5 != 0:
                     label.set_visible(False)
 
-        ax1.set_title('Prediction')
-        ax2.set_title('Truth')
+        ax1.set_title(f'Prediction')
+        ax2.set_title(f'Truth')
         plt.tight_layout()
         return fig
 
@@ -107,12 +111,16 @@ class FeatureSpace1d(Callback):
         val_labels_det = np.asarray(val_labels.detach().cpu(), dtype=np.int)
 
         trainer.logger.experiment.log({
-            "Validation_PredictionHeatmap": wandb.Image(self.heatmap(recon_val, x_val, val_labels_det))
+            "Validation_PredictionHeatmap":
+                [wandb.Image(self.heatmap(recon_val[:, strand, :, :],
+                                          x_val[:, strand, :, :],
+                                          val_labels_det))
+                 for strand in range(recon_val.shape[1])]
         })
 
-        trainer.logger.experiment.log({
-            "Validation_PredictionSingle": [wandb.Image(self.single_prediction(recon_val[i, :],
-                                                                               x_val[i, :],
-                                                                               val_labels_det[i]))
-                                            for i in range(self.num_samples)]
-        })
+        # trainer.logger.experiment.log({
+        #     "Validation_PredictionSingle": [wandb.Image(self.single_prediction(recon_val[i, :],
+        #                                                                        x_val[i, :],
+        #                                                                        val_labels_det[i]))
+        #                                     for i in range(self.num_samples)]
+        # })

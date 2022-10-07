@@ -3,7 +3,7 @@ from source.vae import create_vanilla_vae
 # Decoder
 from source.models.linear_decoder import WrappedLinearDecoder
 from source.models.coefficient_decoder import CoefficientDecoder
-
+from source.models.sequence_encoder import SequenceEncoder
 
 # Set device
 torch.cuda.empty_cache()
@@ -72,7 +72,6 @@ def main(simulated=False):
     if simulated:
         import numpy as np
         dm = simulated_dm()
-        # TODO: add these (and below) as properties in the submodule's datamodules
         chrom_channels, out_channels = 1, 1
         stacked_bases = np.vstack(dm.bases)
         seq_length = 20
@@ -81,34 +80,31 @@ def main(simulated=False):
         dm = ascat_dm()
         chrom_channels, out_channels = 23, 23
         seq_length = 1000
-        latent_dimension = 20
+        latent_dimension = 40
 
     print(dm)
 
-    # Encoder setup
-    setup_dict = {"n_classes": latent_dimension,
-                  "n_hidden": 128,
-                  "n_layers": 3,
-                  "dropout": 0.,
-                  "bidirectional": True,
-                  "stack": 1,
-                  "in_channels": chrom_channels,
-                  "out_channels": out_channels,
-                  "kernel_size": 3,
-                  "stride": 5,
-                  "padding": 1
-                  }
+    # Create encoder
+    encoder = SequenceEncoder(out_dim=latent_dimension, n_hidden=64, n_layers=3, dropout=0.,
+                              bidirectional=True, stack=1, in_channels=chrom_channels, out_channels=out_channels,
+                              kernel_size=3, stride=5, padding=1)
 
     # Create decoder
     # decoder = CoefficientDecoders(in_features=latent_dimension, bases=stacked_bases)
     decoder = WrappedLinearDecoder(in_features=latent_dimension,
                                    length=seq_length, chromosomes=chrom_channels, strands=2,
-                                   hidden_features=16)
+                                   hidden_features=32)
+
+    # Validation set
+    val_iterator = iter(dm.val_dataloader())
+    # batches = 3
+    # for i in range(batches):
+    #     feature, label = next(val_iterator)
 
     # Create model
-    model, trainer = create_vanilla_vae(encoder_setup=setup_dict, decoder_model=decoder,
-                                        latent_dim=latent_dimension, kld_weight=1.,
-                                        validation_hook_batch=next(iter(dm.val_dataloader())),
+    model, trainer = create_vanilla_vae(encoder_model=encoder, decoder_model=decoder,
+                                        latent_dim=latent_dimension, kld_weight=2,
+                                        validation_hook_batch=next(val_iterator),
                                         )
 
     # Train model
