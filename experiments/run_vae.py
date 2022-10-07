@@ -1,7 +1,7 @@
 import torch
 from source.vae import create_vanilla_vae
 # Decoder
-from source.models.linear_decoder import LinearDecoder
+from source.models.linear_decoder import WrappedLinearDecoder
 from source.models.coefficient_decoder import CoefficientDecoder
 
 
@@ -63,7 +63,7 @@ def simulated_dm():
 def ascat_dm():
     from data.ASCAT.loader import ASCATDataModule as DataModule
     cancer_types = ['OV', 'STAD']   # ['STAD', 'COAD']
-    return DataModule(cancer_types=cancer_types)
+    return DataModule(cancer_types=cancer_types, batch_size=32)
 
 
 def main(simulated=False):
@@ -89,7 +89,7 @@ def main(simulated=False):
     setup_dict = {"n_classes": latent_dimension,
                   "n_hidden": 128,
                   "n_layers": 3,
-                  "dropout": 0.6,
+                  "dropout": 0.,
                   "bidirectional": True,
                   "stack": 1,
                   "in_channels": chrom_channels,
@@ -100,12 +100,14 @@ def main(simulated=False):
                   }
 
     # Create decoder
-    # decoder = CoefficientDecoder(in_features=latent_dimension, bases=stacked_bases)
-    decoder = LinearDecoder(in_features=latent_dimension, out_features=seq_length)
+    # decoder = CoefficientDecoders(in_features=latent_dimension, bases=stacked_bases)
+    decoder = WrappedLinearDecoder(in_features=latent_dimension,
+                                   length=seq_length, chromosomes=chrom_channels, strands=2,
+                                   hidden_features=16)
 
     # Create model
     model, trainer = create_vanilla_vae(encoder_setup=setup_dict, decoder_model=decoder,
-                                        latent_dim=latent_dimension, kld_weight=0.,
+                                        latent_dim=latent_dimension, kld_weight=1.,
                                         validation_hook_batch=next(iter(dm.val_dataloader())),
                                         )
 
