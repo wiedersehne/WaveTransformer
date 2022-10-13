@@ -12,7 +12,6 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 # Torchmetrics
 from torchmetrics.functional import accuracy
 # Local
-from source.models.sequence_encoder import SequenceEncoder
 from source.custom_callbacks.classifier_callbacks import SequencePrediction
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -20,12 +19,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Classifier(pl.LightningModule, ABC):
 
-    def __init__(self, network_setup):
+    def __init__(self, model):
         """
         """
         super().__init__()
         self.save_hyperparameters()
-        self.model = SequenceEncoder(**network_setup)
+        self.model = model
 
     def load_checkpoint(self, path):
         return self.load_from_checkpoint(path)
@@ -33,10 +32,15 @@ class Classifier(pl.LightningModule, ABC):
     def forward(self, x):
         return self.model(x)
 
+    @staticmethod
+    def loss(logits, labels):
+        return F.nll_loss(logits, labels)
+
     def training_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
-        loss = F.nll_loss(logits, labels)
+        loss = self.loss(logits, labels)
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("train_loss", loss, prog_bar=True, logger=True)
@@ -44,9 +48,10 @@ class Classifier(pl.LightningModule, ABC):
         return {"loss": loss, "accuracy": acc}
 
     def validation_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
-        loss = F.nll_loss(logits, labels)
+        loss = self.loss(logits, labels)
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("val_loss", loss, prog_bar=True, logger=True)
@@ -54,9 +59,10 @@ class Classifier(pl.LightningModule, ABC):
         return {"loss": loss, "accuracy": acc}
 
     def test_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
-        loss = F.nll_loss(logits, labels)
+        loss = self.loss(logits, labels)
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
         self.log("test_loss", loss, prog_bar=True, logger=True)
@@ -79,13 +85,13 @@ class Classifier(pl.LightningModule, ABC):
         }
 
 
-def create_classifier(network_setup,
+def create_classifier(model,
                       dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
                       num_epochs=100, gpus=1,
                       validation_hook_batch=None):
     """ Decorated classifier model wrapper """
 
-    _model = Classifier(network_setup=network_setup)
+    _model = Classifier(model=model)
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(project='Classifier', job_type='train')

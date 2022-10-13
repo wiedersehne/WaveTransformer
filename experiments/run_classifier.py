@@ -1,13 +1,7 @@
-import pandas as pd
 import torch
 from source.classifier import create_classifier
-from sklearn.metrics import (classification_report, confusion_matrix)
-import matplotlib.pyplot as plt
-import seaborn as sns
-import copy
-from experiments.configs.config import extern
-import data
-
+from source.helpers.edges2wavelet import edges2wavelet
+from source.models import SequenceEncoder
 
 # Set device
 torch.cuda.empty_cache()
@@ -83,38 +77,32 @@ def simulated_dm():
 
 def ascat_dm():
     from data.ASCAT.loader import ASCATDataModule as DataModule
-    cancer_types = ['OV', 'STAD']  # ['STAD', 'COAD']  #
-    return DataModule(cancer_types=cancer_types)
+    cancer_types = ['STAD', 'COAD']  # ['OV', 'STAD']
+    return DataModule(cancer_types=cancer_types, custom_edges=edges2wavelet)
 
 
 def main(simulated=False):
 
     # Load data and filter for only the cases of interest
     if simulated:
+        raise NotImplementedError
         dm = simulated_dm()
         chrom_channels, out_channels = 1, 1
+        seq_length = 20
+
     else:
         dm = ascat_dm()
-        chrom_channels, out_channels = 23, 23
+        chrom_channels, out_channels = 2, 2
+        seq_length = 11642
 
     print(dm)
 
-    # Classifier setup
-    setup_dict = {"out_dim": dm.num_cancer_types,
-                  "n_hidden": 128,
-                  "n_layers": 3,
-                  "dropout": 0.6,
-                  "bidirectional": True,
-                  "stack": 1,
-                  "in_channels": chrom_channels,
-                  "out_channels": out_channels,
-                  "kernel_size": 3,
-                  "stride": 5,
-                  "padding": 1
-                  }
+    encoder = SequenceEncoder(in_features=seq_length, out_features=dm.num_cancer_types, n_hidden=128, n_layers=3,
+                              dropout=0.5, bidirectional=True, in_channels=2, out_channels=2,
+                              kernel_size=3, stride=5, padding=1)
 
     # Create model
-    model, trainer = create_classifier(network_setup=setup_dict,
+    model, trainer = create_classifier(model=encoder,
                                        # validation_hook_batch=next(iter(dm.val_dataloader())),
                                        )
     # Train model

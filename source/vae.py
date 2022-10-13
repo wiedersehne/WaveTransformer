@@ -94,7 +94,8 @@ class VanillaVAE(pl.LightningModule, ABC):
         return {'loss': loss, 'Reconstruction_Loss': recons_loss.detach(), 'KLD_Loss': kld_loss.detach()}
 
     def training_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         results = self(sequences)
         train_loss_dict = self.loss_function(*results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
@@ -103,7 +104,8 @@ class VanillaVAE(pl.LightningModule, ABC):
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         results = self(sequences)
         val_loss_dict = self.loss_function(*results)
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
@@ -112,7 +114,8 @@ class VanillaVAE(pl.LightningModule, ABC):
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
-        sequences, labels = batch['feature'], batch['label']
+        sequences, filter_bank = batch['feature']
+        labels = batch['label']
         results = self(sequences)
         test_loss_dict = self.loss_function(*results)
         self.log("test_loss", test_loss_dict['loss'], prog_bar=True, logger=True)

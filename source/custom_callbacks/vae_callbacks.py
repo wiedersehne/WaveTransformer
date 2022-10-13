@@ -13,7 +13,7 @@ class LatentSpace(Callback):
     """
     def __init__(self, val_samples):
         super().__init__()
-        self.val_features = val_samples['feature']
+        self.val_features, self.val_filter_bank = val_samples['feature']
         self.val_labels = val_samples['label']
 
     @staticmethod
@@ -55,16 +55,12 @@ class FeatureSpace1d(Callback):
     def __init__(self, val_samples, num_samples=8):
         super().__init__()
         self.num_samples = num_samples
-        self.val_features = val_samples['feature']
+        self.val_features, self.filter_bank = val_samples['feature']
         self.val_labels = val_samples['label']
         assert num_samples < self.val_features.size(0)
 
     @staticmethod
     def heatmap(prediction, truth, labels):
-        # Stack chromosomes
-        prediction = np.hstack([prediction[:, chromosome, :] for chromosome in range(prediction.shape[1])])
-        truth = np.hstack([truth[:, chromosome, :] for chromosome in range(truth.shape[1])])
-
         permute_idx = np.argsort(labels)
         prediction = prediction[permute_idx, :]
         truth = truth[permute_idx, :]
@@ -112,8 +108,8 @@ class FeatureSpace1d(Callback):
 
         trainer.logger.experiment.log({
             "Validation_PredictionHeatmap":
-                [wandb.Image(self.heatmap(recon_val[:, strand, :, :],
-                                          x_val[:, strand, :, :],
+                [wandb.Image(self.heatmap(recon_val[:, strand, :],
+                                          x_val[:, strand, :],
                                           val_labels_det))
                  for strand in range(recon_val.shape[1])]
         })

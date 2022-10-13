@@ -20,14 +20,14 @@ class LinearDecoder(nn.Module):
 
 
 class WrappedLinearDecoder(nn.Module):
-    def __init__(self, in_features, length, chromosomes, strands, hidden_features=32):
+    def __init__(self, in_features, out_features, strands, hidden_features=32):
         super().__init__()
-
-        self.length, self.chromosomes, self.strands = length, chromosomes, strands
+        self.out_features = out_features
+        self.strands = strands
 
         self.net = LinearDecoder(in_features,
-                                 length * chromosomes * strands,
+                                 out_features * strands,
                                  hidden_features=hidden_features)
 
     def forward(self, z):
-        return torch.reshape(self.net(z), (z.size(0), self.strands, self.chromosomes, self.length))
+        return torch.reshape(self.net(z), (z.size(0), self.strands, self.out_features))
