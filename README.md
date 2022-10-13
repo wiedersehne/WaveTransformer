@@ -1,21 +1,27 @@
-# CN-devel
+# Wave-VAE
 
 git clone --recursive https://github.com/cwlgadd/CN-devel.git
 
 
 To run supervised model:
 
-python run_classifier.py -f <path_to>/<config_file>.yaml
+python run_classifier.py <!--- -f <path_to>/<config_file>.yaml -->
 
 # About this repo
 
-## There are two data modules
+## DataModules
 
 1) SimulatedASCAT
    1) This dataset is constructed from an MDP with known kernel transition. 
 2) ASCAT
    1) This dataset is publicly available genome count number variation data. 
    2) Our ML goal is to recover the genetic (assumed MDP kernel) mutations which led to this data
+
+# Architectures
+
+1) SequenceEncoder
+2) Fully connected decoder
+3) Wavelet RNN decoder
 
 ## The different models
 
