@@ -2,9 +2,9 @@ import numpy as np
 import torch
 import TCGA
 
-from source.vae import create_vae
-# Decoder
+from source.ae import create_ae
 from source.model.decoder.linear import LinearDecoder
+from source.model.decoder.stacked_1d_wavelet import StackedWavelet1D
 from source.model.encoder.sequence_encoder import SequenceEncoder
 
 # Set device
@@ -44,15 +44,19 @@ def experiment(simulated=False):
                             strands=2,
                             chromosomes=chromosomes,
                             hidden_features=32)
+    # decoder = StackedWavelet1D(in_features=latent_dimension,
+    #                            out_features=seq_length,
+    #                            strands=2,
+    #                            chromosomes=chromosomes,
+    #                            hidden_features=32)
 
     # Validation set
+
     val_iterator = iter(dm.val_dataloader())
+    test_iterator = iter(dm.test_dataloader())
 
     # Create model
-    model, trainer = create_vae(encoder_model=encoder, decoder_model=decoder,
-                                latent_dim=latent_dimension, kld_weight=0.,
-                                validation_hook_batch=next(val_iterator),
-                                )
+    model, trainer = create_ae(encoder_model=encoder, decoder_model=decoder)
 
     # Train model
     trainer.fit(model, datamodule=dm)

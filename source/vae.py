@@ -14,6 +14,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from source.custom_callbacks.vae_callbacks import LatentSpace
 from source.custom_callbacks.vae_callbacks import FeatureSpace1d
 
+import pywt
+import numpy as np
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -73,9 +76,16 @@ class VanillaVAE(pl.LightningModule, ABC):
         return eps * std + mu
 
     def forward(self, x: torch.tensor, **kwargs):
+        # print(x.shape)
+        # filter_bank_numpy = pywt.wavedec(x.detach().cpu().numpy(), pywt.Wavelet("haar"))
+        # filter_bank_numpy = np.concatenate(filter_bank_numpy, axis=-1)
+        # x = torch.tensor(filter_bank_numpy, dtype=torch.float)
+        # print(x.shape)
+        
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         recon = self.decode(z)
+        print(f"x shape {x.shape}, recon shape {recon.shape}")
         return [recon, x, mu, log_var]
 
     def loss_function(self, *args) -> dict:
@@ -94,7 +104,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         return {'loss': loss, 'Reconstruction_Loss': recons_loss.detach(), 'KLD_Loss': kld_loss.detach()}
 
     def training_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         results = self(sequences)
         train_loss_dict = self.loss_function(*results)
@@ -104,7 +114,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         results = self(sequences)
         val_loss_dict = self.loss_function(*results)
@@ -114,7 +124,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         results = self(sequences)
         test_loss_dict = self.loss_function(*results)
@@ -128,7 +138,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 10,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "frequency": 10,                    # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -139,7 +149,7 @@ class VanillaVAE(pl.LightningModule, ABC):
         }
 
 
-def create_vanilla_vae(encoder_model, decoder_model, latent_dim, kld_weight,
+def create_vae(encoder_model, decoder_model, latent_dim, kld_weight,
                        dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
                        num_epochs=100, gpus=1,
                        validation_hook_batch=None):

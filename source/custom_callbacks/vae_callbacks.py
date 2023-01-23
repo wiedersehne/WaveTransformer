@@ -13,7 +13,7 @@ class LatentSpace(Callback):
     """
     def __init__(self, val_samples):
         super().__init__()
-        self.val_features, self.val_filter_bank = val_samples['feature']
+        self.val_features = val_samples['feature']
         self.val_labels = val_samples['label']
 
     @staticmethod
@@ -55,7 +55,7 @@ class FeatureSpace1d(Callback):
     def __init__(self, val_samples, num_samples=8):
         super().__init__()
         self.num_samples = num_samples
-        self.val_features, self.filter_bank = val_samples['feature']
+        self.val_features = val_samples['feature']
         self.val_labels = val_samples['label']
         assert num_samples < self.val_features.size(0)
 
@@ -108,8 +108,8 @@ class FeatureSpace1d(Callback):
 
         trainer.logger.experiment.log({
             "Validation_PredictionHeatmap":
-                [wandb.Image(self.heatmap(recon_val[:, strand, :],
-                                          x_val[:, strand, :],
+                [wandb.Image(self.heatmap(recon_val[:, strand, :, :].reshape(recon_val.shape[0], -1),
+                                          x_val[:, strand, :, :].reshape(x_val.shape[0], -1),
                                           val_labels_det))
                  for strand in range(recon_val.shape[1])]
         })

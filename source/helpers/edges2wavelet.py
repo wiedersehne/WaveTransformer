@@ -2,8 +2,7 @@ import torch
 import numpy as np
 import pandas as pd
 import pywt
-from data.ASCAT.ascat import *
-from data.helpers import get_chr_base_pair_lengths as chr_lengths
+from TCGA.data_modules.utils.helpers import get_chr_base_pair_lengths as chr_lengths
 
 
 def edges2pool(subject_edge_info, equal_chr_length=False, steps=18):
@@ -75,5 +74,5 @@ def edges2wavelet(subject_edge_info, equal_chr_length=False, pooling_steps=18, m
         level = dwt_max_level if max_depth is None else np.min((max_depth, dwt_max_level))
         # Get multi-resolution wavelet filter bank
         filter_bank = pywt.wavedec(pooling, 'haar', level=level)
-
-    return torch.tensor(pooling, dtype=torch.float), [torch.tensor(cAD, dtype=torch.float) for cAD in filter_bank]
+        print(filter_bank.shape)
+    return filter_bank  # torch.tensor(pooling, dtype=torch.float), [torch.tensor(cAD, dtype=torch.float) for cAD in filter_bank]

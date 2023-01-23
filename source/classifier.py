@@ -37,7 +37,7 @@ class Classifier(pl.LightningModule, ABC):
         return F.nll_loss(logits, labels)
 
     def training_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = self.loss(logits, labels)
@@ -48,7 +48,7 @@ class Classifier(pl.LightningModule, ABC):
         return {"loss": loss, "accuracy": acc}
 
     def validation_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = self.loss(logits, labels)
@@ -59,7 +59,7 @@ class Classifier(pl.LightningModule, ABC):
         return {"loss": loss, "accuracy": acc}
 
     def test_step(self, batch, batch_idx):
-        sequences, filter_bank = batch['feature']
+        sequences = batch['feature']
         labels = batch['label']
         logits = torch.log_softmax(self(sequences), dim=1)
         loss = self.loss(logits, labels)

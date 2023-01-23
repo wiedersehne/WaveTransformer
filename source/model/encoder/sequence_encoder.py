@@ -35,6 +35,7 @@ class SequenceEncoder(nn.Module):
         self.hidden_size = n_hidden
         self.n_layers = n_layers
         self.bidirectional = bidirectional
+        self.latent_dim = out_features
 
         self.convolution_strands = nn.Conv1d(
             in_channels=in_channels,
@@ -43,7 +44,6 @@ class SequenceEncoder(nn.Module):
             stride=stride,
             padding=padding,
         )
-
         self.lstm = nn.LSTM(
             input_size=int(np.ceil(in_features/stride)),
             hidden_size=n_hidden,
@@ -61,6 +61,9 @@ class SequenceEncoder(nn.Module):
 
     def forward(self, x):
         # Take in batch_size x num_strands x num_chromosomes x sequence_length
+
+        # Stack chromosomes
+        x = x.reshape(x.shape[0], x.shape[1], -1)
 
         # CNN network, with each sequence as a channel
         c_out = self.convolution_strands(x)
