@@ -65,4 +65,4 @@ def experiment(simulated=False):
 
 if __name__ == '__main__':
 
-    experiment(simulated=True)
+    experiment(simulated=False)

@@ -64,9 +64,11 @@ class SequenceEncoder(nn.Module):
 
         # Stack chromosomes
         x = x.reshape(x.shape[0], x.shape[1], -1)
+        # x = [B, Strands, Chromosomes*Seq Length]
 
         # CNN network, with each sequence as a channel
         c_out = self.convolution_strands(x)
+        # c_out = [B, Strands, downsample(Chromosomes*Seq Length)]
 
         # LSTM layers
         self.lstm.flatten_parameters()                         # For multiple GPU cases

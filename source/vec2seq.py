@@ -68,20 +68,14 @@ class Vec2Seq(pl.LightningModule, ABC):
         # Connect embedded latent dimension to the initial hidden state of the decoder
         self.bidirectional = 2 if self.decoder.bidirectional else 1
 
-        # Networks conencting latent vectors to initial hidden/cell state
+        # Networks connecting latent vectors to initial hidden/cell state
         self.fc1 = nn.Linear(encoder_model.latent_dim,
                              self.decoder.lstm_layers*self.bidirectional * self.decoder.real_hidden_size)
         self.fc2 = nn.Linear(encoder_model.latent_dim,
-                             self.decoder.lstm_layers*self.bidirectional * self.decoder.real_hidden_size)
+                             self.decoder.lstm_layers*self.bidirectional * self.decoder.hidden_size)
 
         # Connect output hidden states (in forward direction) to wavelet coefficient space
-        _hidden = 256
-        self.fc_out = [nn.Sequential(
-            nn.Linear(in_features=self.bidirectional*self.decoder.real_hidden_size, out_features=length, device=device),
-            # nn.ReLU(),
-            # nn.Linear(in_features=_hidden, out_features=length, device=device),
-        )
-                       for length in self.bank_lengths]
+        self.fc_out = [nn.LazyLinear(out_features=length, device=device) for length in self.bank_lengths]
 
     def __str__(self):
         s = ''
@@ -92,7 +86,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         s += f'\n\t => Full filter bank lengths {self.full_bank_lengths}'
         s += f'\n\t => Recursion is over bank lengths {self.bank_lengths}, with recursion limit {self.recursion_limit}'
         s += f'\n\t => {"bi-directional" if self.decoder.bidirectional else "uni-directional"} LSTM network'
-        s += f'\n\t => LSTM input embedding network is {self.decoder.embed}'
+        s += f'\n\t => LSTM linear projection size {self.decoder.proj_size if self.decoder.proj_size > 0 else "Nill"}'
         s += f'\nDecoder optimisation\n======'
         s += f"\n\t => Teacher forcing ratio={self.teacher_forcing}"
         return s
@@ -116,25 +110,27 @@ class Vec2Seq(pl.LightningModule, ABC):
             _true_masked_bank = [AD if i <= t else torch.zeros_like(AD) for i, AD in enumerate(true_bank)]
             true_masked_recons.append(ptwt.waverec(_true_masked_bank, self.wavelet).reshape(x.shape))
 
-        def recursion(_residual, _hidden, _cell, _pred_bank, t):
+        def recursion(_residual, _hidden, _cell, _pred_bank, _t):
             """ in: residual signal, previous hidden and previous cell states
                 out: tensor (predictions) and new hidden and cell states
             """
             lstm_out, (_hidden, _cell) = self.decoder(_residual, _hidden, _cell)
-            _pred_bank[t] = (self.fc_out[t](lstm_out))
+
+            _pred_bank[_t] = (self.fc_out[_t](lstm_out))
             _reconstruction = ptwt.waverec(_pred_bank, self.wavelet).reshape(_residual.shape)
 
             return _reconstruction, (_hidden, _cell), _pred_bank
 
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
         z = self.encoder(x)
+
         # print(self.decoder.rnn.get_expected_hidden_size())
         hidden = torch.reshape(self.fc1(z), (batch_size,
                                              self.decoder.lstm_layers*self.bidirectional,
                                              self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
         cell = torch.reshape(self.fc2(z), (batch_size,
                                            self.decoder.lstm_layers*self.bidirectional,
-                                           self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
+                                           self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
 
         # first input to the decoder is the zero vector = [1, batch size, original sequence dim]
         partly_recon = torch.zeros(x.shape, device=device)
@@ -172,6 +168,8 @@ class Vec2Seq(pl.LightningModule, ABC):
         return partly_recon.reshape(x.shape), meta_data
 
     def loss_function(self, x, x_recon, meta) -> dict:
+        x = meta["true_recurrent_recon"][-1]
+
         x_flat = torch.flatten(x, start_dim=1)
         recon_flat = torch.flatten(x_recon, start_dim=1)
         recons_loss = F.mse_loss(x_flat, recon_flat)
@@ -208,7 +206,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 5,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "frequency": 15,                     # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -290,7 +288,7 @@ def create_vec2seq(encoder_model,
         callbacks=callbacks,
         enable_checkpointing=True,
         max_epochs=num_epochs,
-        check_val_every_n_epoch=5,
+        check_val_every_n_epoch=15,  # int(np.floor(num_epochs/3)),
         gpus=gpus,
     )
 
