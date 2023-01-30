@@ -69,22 +69,34 @@ def run_ascat_example(project_name):
 
     latent_dimension = len(config["cancer_types"])
     seq_length = 100
-    chromosomes = 23   # TODO: currently only test with first three
+    chromosomes = 23
     strands = 2
 
-    # Create encoder
-    encoder = SequenceEncoder(in_features=seq_length*chromosomes, out_features=latent_dimension, n_hidden=128, n_layers=3,
-                              dropout=0.6, bidirectional=True, in_channels=2, out_channels=2,
-                              kernel_size=3, stride=5, padding=1)
+    # Create encoder to initialise first hidden state
+    init_hiddencell = True
+    if init_hiddencell:
+        encoder = SequenceEncoder(in_features=seq_length*chromosomes, out_features=latent_dimension, n_hidden=128, n_layers=3,
+                                  dropout=0.6, bidirectional=True, in_channels=2, out_channels=2,
+                                  kernel_size=3, stride=5, padding=1)
+    else:
+        encoder = None
 
     # Create decoder
+    conv_layer = False
+    proj_size = 30
     decoder = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                          hidden_size=256, layers=1, bidirectional=True, proj_size=30, dropout=0.)
+                          hidden_size=512, layers=1, bidirectional=True, proj_size=proj_size, dropout=0.,
+                          conv_layer=conv_layer)
 
     # Create model
     auto_reccurent = False
-    wandb_name = project_name + f"_auto{auto_reccurent}_hdim{decoder.hidden_size}_haar"
-    model, trainer = create_vec2seq(encoder_model=encoder, decoder_model=decoder,
+    wandb_name = project_name + f"_conv{conv_layer}" \
+                                f"_auto{auto_reccurent}" \
+                                f"_hdim{decoder.hidden_size}proj{decoder.proj_size}" \
+                                f"_initH0C0{init_hiddencell}" \
+                                f"_haar"
+    model, trainer = create_vec2seq(decoder_model=decoder,
+                                    encoder_model=encoder,
                                     wavelet='haar',  # 'bior4.4',  # 'coif4'
                                     coarse_skip=0, recursion_limit=10,
                                     auto_reccurent=auto_reccurent, teacher_forcing_ratio=0.5,

@@ -27,8 +27,8 @@ class Vec2Seq(pl.LightningModule, ABC):
         return ptwt.wavedec(x_flat, wavelet, mode='zero', level=self.max_level)
 
     def __init__(self,
-                 encoder_model,
                  decoder_model,
+                 encoder_model=None,
                  wavelet="haar",
                  auto_reccurent=False,
                  teacher_forcing_ratio=0.,
@@ -41,6 +41,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         super().__init__()
         self.save_hyperparameters()
         self.autorecurrent = auto_reccurent
+        self.encoder = encoder_model
         use_bits = False                        # Decide DWT level based on bits of information, or on boundaries
 
         # Model
@@ -63,32 +64,31 @@ class Vec2Seq(pl.LightningModule, ABC):
         self.bank_lengths = self.full_bank_lengths[:recursion_limit]
 
         # Encoder/decoder
-        self.encoder = encoder_model
         self.decoder = decoder_model
         # Connect embedded latent dimension to the initial hidden state of the decoder
         self.bidirectional = 2 if self.decoder.bidirectional else 1
 
-        # Networks connecting latent vectors to initial hidden/cell state
-        self.fc1 = nn.Linear(encoder_model.latent_dim,
-                             self.decoder.lstm_layers*self.bidirectional * self.decoder.real_hidden_size)
-        self.fc2 = nn.Linear(encoder_model.latent_dim,
-                             self.decoder.lstm_layers*self.bidirectional * self.decoder.hidden_size)
+        if self.encoder is not None:
+            # Networks connecting latent vectors to initial hidden/cell state
+            self.fc1 = nn.Linear(encoder_model.latent_dim,
+                                 self.decoder.lstm_layers * self.bidirectional * self.decoder.real_hidden_size)
+            self.fc2 = nn.Linear(encoder_model.latent_dim,
+                                 self.decoder.lstm_layers * self.bidirectional * self.decoder.hidden_size)
 
         # Connect output hidden states (in forward direction) to wavelet coefficient space
         self.fc_out = [nn.LazyLinear(out_features=length, device=device) for length in self.bank_lengths]
 
     def __str__(self):
         s = ''
-        s += f'\nData\n======'
-        s += f'\n\t => Flattened sequence length {self.decoder.L}'
-        s += f'\nDecoder architecture\n======'
-        s += f'\n\t => Wavelet "{self.wavelet.name}", which has decomposition length {self.wavelet.dec_len}'
-        s += f'\n\t => Full filter bank lengths {self.full_bank_lengths}'
-        s += f'\n\t => Recursion is over bank lengths {self.bank_lengths}, with recursion limit {self.recursion_limit}'
-        s += f'\n\t => {"bi-directional" if self.decoder.bidirectional else "uni-directional"} LSTM network'
-        s += f'\n\t => LSTM linear projection size {self.decoder.proj_size if self.decoder.proj_size > 0 else "Nill"}'
-        s += f'\nDecoder optimisation\n======'
-        s += f"\n\t => Teacher forcing ratio={self.teacher_forcing}"
+        s += f'\nData'
+        s += f'\n\t Data size (B, {self.decoder.C}, {self.decoder.H}, {self.decoder.W})'
+        s += f'\nRecurrent network'
+        s += f'\n\t Wavelet "{self.wavelet.name}", which has decomposition length {self.wavelet.dec_len}'
+        s += f'\n\t Full filter bank lengths {self.full_bank_lengths}'
+        s += f'\n\t Recursion is over bank lengths {self.bank_lengths}, with recursion limit {self.recursion_limit}'
+        if self.autorecurrent:
+            s += f"\n\t Teacher forcing ratio={self.teacher_forcing}"
+        s += str(self.decoder)
         return s
 
     def load_checkpoint(self, path):
@@ -122,23 +122,33 @@ class Vec2Seq(pl.LightningModule, ABC):
             return _reconstruction, (_hidden, _cell), _pred_bank
 
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
-        z = self.encoder(x)
+        if self.encoder is not None:
+            z = self.encoder(x)
+            hidden = torch.reshape(self.fc1(z), (batch_size,
+                                                 self.decoder.lstm_layers*self.bidirectional,
+                                                 self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
+            cell = torch.reshape(self.fc2(z), (batch_size,
+                                               self.decoder.lstm_layers*self.bidirectional,
+                                               self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
+        else:
+            hidden = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
+                                  batch_size,
+                                  self.decoder.real_hidden_size), device=device)
+            cell = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
+                                batch_size,
+                                self.decoder.hidden_size), device=device)
+            z = torch.zeros((x.shape(0), self.encoder.latent_dim))
 
-        # print(self.decoder.rnn.get_expected_hidden_size())
-        hidden = torch.reshape(self.fc1(z), (batch_size,
-                                             self.decoder.lstm_layers*self.bidirectional,
-                                             self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
-        cell = torch.reshape(self.fc2(z), (batch_size,
-                                           self.decoder.lstm_layers*self.bidirectional,
-                                           self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
-
-        # first input to the decoder is the zero vector = [1, batch size, original sequence dim]
+        # first LSTM input is the residual from the zero vector = [1, batch size, original sequence dim], i.e. x
         partly_recon = torch.zeros(x.shape, device=device)
 
         # Recurrent outputs:
         #  the approximation/detail space coefficients, which gets refined at each step
+        #  the corresponding reconstructed features
+        #  the hidden embedding at that scale
         predicted_bank = [torch.zeros((batch_size, length), device=device) for length in self.full_bank_lengths]
         pred_masked_recons = []
+        hidden_embedding = [hidden]
 
         for t in range(self.recursion_limit):
 
@@ -157,12 +167,14 @@ class Vec2Seq(pl.LightningModule, ABC):
 
             # Record next output for target sequence
             pred_masked_recons.append(partly_recon)
+            hidden_embedding.append(hidden)
 
         meta_data = {'true_bank': true_bank,
                      'filter_bank': predicted_bank,
                      'pred_recurrent_recon': pred_masked_recons,
                      'true_recurrent_recon': true_masked_recons[1:],      # exclude first, as this is the zero vector
                      'latent': z,
+                     'hidden': hidden_embedding
                      }
 
         return partly_recon.reshape(x.shape), meta_data
@@ -217,8 +229,8 @@ class Vec2Seq(pl.LightningModule, ABC):
         }
 
 
-def create_vec2seq(encoder_model,
-                   decoder_model,
+def create_vec2seq(decoder_model,
+                   encoder_model=None,
                    wavelet='haar',
                    auto_reccurent=False,
                    teacher_forcing_ratio=0.5,
@@ -228,8 +240,8 @@ def create_vec2seq(encoder_model,
                    num_epochs=20, gpus=1,
                    validation_hook_batch=None, test_hook_batch=None, run_id="Vec2Seq"):
 
-    _model = Vec2Seq(encoder_model=encoder_model,
-                     decoder_model=decoder_model,
+    _model = Vec2Seq(decoder_model=decoder_model,
+                     encoder_model=encoder_model,
                      wavelet=wavelet,
                      auto_reccurent=auto_reccurent,
                      teacher_forcing_ratio=teacher_forcing_ratio,
