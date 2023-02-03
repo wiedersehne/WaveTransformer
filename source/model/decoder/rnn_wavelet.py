@@ -1,8 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from source.model.encoder.sequence_encoder import SequenceEncoder
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -20,9 +17,9 @@ class WaveletLSTM(nn.Module):
     def __str__(self):
         s = '\nWaveletLSTM'
         s += f'\n\t Number of directions in LSTM cells {2 if self.bidirectional else 1}'
-        s += f'\n\t Hidden and cell sizes {self.hidden_size}, with hidden projection to {self.proj_size} dimensions'
-        s += f'\n\t Channels {self.C}'
-        s += f'\n\t Chromosomes {self.H} of length {self.W}'
+        s += f'\n\t Number of layers {self.lstm_layers}'
+        s += f'\n\t Hidden/cell sizes {self.hidden_size}, with hidden projection to {self.proj_size} dimensions'
+        s += f'\n\t {self.H} chromosomes, of length {self.W} and {self.C} channels'
         if self.conv is not None:
             s += f'\n\tConvolving the {self.C} channels before LSTM cells'
         return s

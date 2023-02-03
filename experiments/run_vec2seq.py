@@ -67,41 +67,24 @@ def run_ascat_example(project_name):
     print(dm)
     print(len(dm.train_set))
 
-    latent_dimension = len(config["cancer_types"])
     seq_length = 100
     chromosomes = 23
     strands = 2
 
-    # Create encoder to initialise first hidden state
-    init_hiddencell = True
-    if init_hiddencell:
-        encoder = SequenceEncoder(in_features=seq_length*chromosomes, out_features=latent_dimension, n_hidden=128, n_layers=3,
-                                  dropout=0.6, bidirectional=True, in_channels=2, out_channels=2,
-                                  kernel_size=3, stride=5, padding=1)
-    else:
-        encoder = None
-
     # Create decoder
-    conv_layer = False
-    proj_size = 30
+    proj_size = 50
     decoder = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                          hidden_size=512, layers=1, bidirectional=True, proj_size=proj_size, dropout=0.,
-                          conv_layer=conv_layer)
+                          hidden_size=512, layers=1, bidirectional=True, proj_size=proj_size,
+                          )
 
     # Create model
-    auto_reccurent = False
-    wandb_name = project_name + f"_conv{conv_layer}" \
-                                f"_auto{auto_reccurent}" \
-                                f"_hdim{decoder.hidden_size}proj{decoder.proj_size}" \
-                                f"_initH0C0{init_hiddencell}" \
-                                f"_haar"
     model, trainer = create_vec2seq(decoder_model=decoder,
-                                    encoder_model=encoder,
                                     wavelet='haar',  # 'bior4.4',  # 'coif4'
-                                    coarse_skip=0, recursion_limit=10,
-                                    auto_reccurent=auto_reccurent, teacher_forcing_ratio=0.5,
-                                    run_id=wandb_name,
-                                    num_epochs=50,
+                                    coarse_skip=0,
+                                    recursion_limit=10,
+                                    auto_reccurent=False,
+                                    run_id=project_name + f"_hdim{decoder.hidden_size}proj{decoder.proj_size}",
+                                    num_epochs=100,
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                     test_hook_batch=next(iter(dm.test_dataloader()))        # TODO: update to all set
                                     )

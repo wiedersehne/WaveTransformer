@@ -11,6 +11,8 @@ from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from source.custom_callbacks.vec2seq_callbacks import *
+# Local
+from source.model.encoder.sequence_encoder import SequenceEncoder
 
 import ptwt
 import pywt
@@ -26,13 +28,27 @@ class Vec2Seq(pl.LightningModule, ABC):
         x_flat = torch.reshape(x, (x.size(0), -1))
         return ptwt.wavedec(x_flat, wavelet, mode='zero', level=self.max_level)
 
+    def h0(self, x):
+        z = self.h0_network(x)
+        hidden = torch.reshape(self.h0_hidden(z), (x.shape[0],
+                                                   self.decoder.lstm_layers * self.bidirectional,
+                                                   self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
+        cell = torch.reshape(self.h0_cell(z), (x.shape[0],
+                                               self.decoder.lstm_layers * self.bidirectional,
+                                               self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
+        return hidden, cell
+
+    @staticmethod
+    def fc_network(out_features, hidden=128):
+        return nn.Sequential(nn.LazyLinear(out_features=out_features, device=device),
+                             )
+
     def __init__(self,
                  decoder_model,
-                 encoder_model=None,
                  wavelet="haar",
                  auto_reccurent=False,
                  teacher_forcing_ratio=0.,
-                 coarse_skip=0,
+                 coarse_skip: int = 0,
                  recursion_limit=None,
                  ):
 
@@ -41,21 +57,17 @@ class Vec2Seq(pl.LightningModule, ABC):
         super().__init__()
         self.save_hyperparameters()
         self.autorecurrent = auto_reccurent
-        self.encoder = encoder_model
-        use_bits = False                        # Decide DWT level based on bits of information, or on boundaries
+        l = decoder_model.L
 
         # Model
         self.teacher_forcing = teacher_forcing_ratio
 
         # Data
-        l = decoder_model.L
-        l_bits = (l).bit_length()
 
         # Wavelet
         self.wavelet = pywt.Wavelet(wavelet)
         # # Calculate the filter bank sizes, and recursion depth
-        self.max_level = l_bits if use_bits else pywt.dwt_max_level(l, wavelet)
-        self.max_level -= coarse_skip
+        self.max_level = pywt.dwt_max_level(l, wavelet) - coarse_skip
         self.full_bank_lengths = [t.shape[1] for t in pywt.wavedec(np.zeros((1, l)), self.wavelet,
                                                                    level=self.max_level)]
         # Detail space lengths, then insert first approximation space length
@@ -65,18 +77,17 @@ class Vec2Seq(pl.LightningModule, ABC):
 
         # Encoder/decoder
         self.decoder = decoder_model
-        # Connect embedded latent dimension to the initial hidden state of the decoder
         self.bidirectional = 2 if self.decoder.bidirectional else 1
 
-        if self.encoder is not None:
-            # Networks connecting latent vectors to initial hidden/cell state
-            self.fc1 = nn.Linear(encoder_model.latent_dim,
-                                 self.decoder.lstm_layers * self.bidirectional * self.decoder.real_hidden_size)
-            self.fc2 = nn.Linear(encoder_model.latent_dim,
-                                 self.decoder.lstm_layers * self.bidirectional * self.decoder.hidden_size)
+        self.h0_network = SequenceEncoder(in_features=100*23, out_features=5, n_hidden=128,
+                                          n_layers=3, dropout=0.6, bidirectional=True, in_channels=2, out_channels=2,
+                                          kernel_size=3, stride=5, padding=1)
+        self.h0_hidden = nn.Linear(5, self.decoder.lstm_layers * self.bidirectional * self.decoder.real_hidden_size)
+        self.h0_cell = nn.Linear(5,  self.decoder.lstm_layers * self.bidirectional * self.decoder.hidden_size)
+        # Connect embedded latent dimension to the initial hidden state of the decoder
 
         # Connect output hidden states (in forward direction) to wavelet coefficient space
-        self.fc_out = [nn.LazyLinear(out_features=length, device=device) for length in self.bank_lengths]
+        self.fc_out = [self.fc_network(out_features=length) for length in self.bank_lengths]
 
     def __str__(self):
         s = ''
@@ -103,8 +114,7 @@ class Vec2Seq(pl.LightningModule, ABC):
 
         # Get ground truth for whole target sequence of signal
         true_bank = self.fwt(x, wavelet=self.wavelet)
-        # sequential masked (zeroing higher detail spaces) ground truth
-        true_masked_recons = [torch.zeros(x.shape, device=device)]
+        true_masked_recons = [torch.zeros(x.shape, device=device)]     # masked ground truth (zeroing higher spaces)
         for t in range(self.recursion_limit):
             # Partial fidelity ground truth for, removing the contribution of coefficients further down the recurrence
             _true_masked_bank = [AD if i <= t else torch.zeros_like(AD) for i, AD in enumerate(true_bank)]
@@ -122,22 +132,23 @@ class Vec2Seq(pl.LightningModule, ABC):
             return _reconstruction, (_hidden, _cell), _pred_bank
 
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
-        if self.encoder is not None:
-            z = self.encoder(x)
-            hidden = torch.reshape(self.fc1(z), (batch_size,
-                                                 self.decoder.lstm_layers*self.bidirectional,
-                                                 self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
-            cell = torch.reshape(self.fc2(z), (batch_size,
-                                               self.decoder.lstm_layers*self.bidirectional,
-                                               self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
-        else:
+        init_method = 'learn'
+        if init_method == 'zeros':
             hidden = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
                                   batch_size,
                                   self.decoder.real_hidden_size), device=device)
             cell = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
                                 batch_size,
                                 self.decoder.hidden_size), device=device)
-            z = torch.zeros((x.shape(0), self.encoder.latent_dim))
+        elif init_method == 'means':
+            count_avg = torch.mean(x.reshape((x.shape[0], -1)), dim=1, keepdim=True)
+            hidden = count_avg.repeat(self.decoder.lstm_layers * self.bidirectional, 1, self.decoder.real_hidden_size)
+            cell = count_avg.repeat(self.decoder.lstm_layers * self.bidirectional, 1, self.decoder.hidden_size)
+        elif init_method == 'learn':
+            # We can also learn the initial states, which can improve training speed
+            hidden, cell = self.h0(x)
+        else:
+            raise NotImplementedError
 
         # first LSTM input is the residual from the zero vector = [1, batch size, original sequence dim], i.e. x
         partly_recon = torch.zeros(x.shape, device=device)
@@ -173,7 +184,6 @@ class Vec2Seq(pl.LightningModule, ABC):
                      'filter_bank': predicted_bank,
                      'pred_recurrent_recon': pred_masked_recons,
                      'true_recurrent_recon': true_masked_recons[1:],      # exclude first, as this is the zero vector
-                     'latent': z,
                      'hidden': hidden_embedding
                      }
 
@@ -214,11 +224,11 @@ class Vec2Seq(pl.LightningModule, ABC):
         return test_loss_dict['loss']
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters())  # , lr=0.001)
+        optimizer = optim.Adam(self.parameters()) #, lr=0.01)
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 15,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "frequency": 5,                     # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -230,7 +240,6 @@ class Vec2Seq(pl.LightningModule, ABC):
 
 
 def create_vec2seq(decoder_model,
-                   encoder_model=None,
                    wavelet='haar',
                    auto_reccurent=False,
                    teacher_forcing_ratio=0.5,
@@ -241,7 +250,6 @@ def create_vec2seq(decoder_model,
                    validation_hook_batch=None, test_hook_batch=None, run_id="Vec2Seq"):
 
     _model = Vec2Seq(decoder_model=decoder_model,
-                     encoder_model=encoder_model,
                      wavelet=wavelet,
                      auto_reccurent=auto_reccurent,
                      teacher_forcing_ratio=teacher_forcing_ratio,
@@ -267,7 +275,7 @@ def create_vec2seq(decoder_model,
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
-        min_delta=0.00,
+        min_delta=0.02,
         patience=2,
         verbose=verbose
     )
@@ -300,7 +308,7 @@ def create_vec2seq(decoder_model,
         callbacks=callbacks,
         enable_checkpointing=True,
         max_epochs=num_epochs,
-        check_val_every_n_epoch=15,  # int(np.floor(num_epochs/3)),
+        check_val_every_n_epoch=5,  # int(np.floor(num_epochs/3)),
         gpus=gpus,
     )
 
