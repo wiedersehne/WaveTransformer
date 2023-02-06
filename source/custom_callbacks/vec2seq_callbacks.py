@@ -234,7 +234,7 @@ def heatmap(prediction, truth, labels, title):
 
     sns.heatmap(prediction, ax=ax1, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
     sns.heatmap(truth, ax=ax2, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
-    sns.heatmap(np.abs(prediction - truth), ax=ax3, cmap='Blues', yticklabels=labels)
+    sns.heatmap(np.log(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)
 
     for ax in [ax1, ax2, ax3]:
         ax.set_xlabel("Locus")
@@ -246,7 +246,7 @@ def heatmap(prediction, truth, labels, title):
 
     ax1.set_title(f'Prediction')
     ax2.set_title(f'Truth')
-    ax3.set_title(f'Absolute error')
+    ax3.set_title(f'Log absolute error')
     fig.suptitle(title)
     plt.tight_layout()
     return fig

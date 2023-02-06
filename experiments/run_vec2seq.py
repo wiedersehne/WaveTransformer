@@ -72,21 +72,21 @@ def run_ascat_example(project_name):
     strands = 2
 
     # Create decoder
-    proj_size = 50
-    decoder = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                          hidden_size=512, layers=1, bidirectional=True, proj_size=proj_size,
-                          )
+    wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
+                            hidden_size=512, layers=1, bidirectional=True, proj_size=50
+                            )
 
     # Create model
-    model, trainer = create_vec2seq(decoder_model=decoder,
+    model, trainer = create_vec2seq(recurrent_net=wave_lstm,
                                     wavelet='haar',  # 'bior4.4',  # 'coif4'
                                     coarse_skip=0,
                                     recursion_limit=10,
                                     auto_reccurent=False,
-                                    run_id=project_name + f"_hdim{decoder.hidden_size}proj{decoder.proj_size}",
                                     num_epochs=100,
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
-                                    test_hook_batch=next(iter(dm.test_dataloader()))        # TODO: update to all set
+                                    test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
+                                    project="WaveLSTM-ASCAT",
+                                    run_id=f"hdim{wave_lstm.hidden_size}proj{wave_lstm.proj_size}"
                                     )
 
     # Train model

@@ -11,8 +11,6 @@ from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from source.custom_callbacks.vec2seq_callbacks import *
-# Local
-from source.model.encoder.sequence_encoder import SequenceEncoder
 
 import ptwt
 import pywt
@@ -28,23 +26,12 @@ class Vec2Seq(pl.LightningModule, ABC):
         x_flat = torch.reshape(x, (x.size(0), -1))
         return ptwt.wavedec(x_flat, wavelet, mode='zero', level=self.max_level)
 
-    def h0(self, x):
-        z = self.h0_network(x)
-        hidden = torch.reshape(self.h0_hidden(z), (x.shape[0],
-                                                   self.decoder.lstm_layers * self.bidirectional,
-                                                   self.decoder.real_hidden_size)).permute((1, 0, 2)).contiguous()
-        cell = torch.reshape(self.h0_cell(z), (x.shape[0],
-                                               self.decoder.lstm_layers * self.bidirectional,
-                                               self.decoder.hidden_size)).permute((1, 0, 2)).contiguous()
-        return hidden, cell
-
     @staticmethod
     def fc_network(out_features, hidden=128):
-        return nn.Sequential(nn.LazyLinear(out_features=out_features, device=device),
-                             )
+        return nn.LazyLinear(out_features=out_features, device=device)
 
     def __init__(self,
-                 decoder_model,
+                 recurrent_net,
                  wavelet="haar",
                  auto_reccurent=False,
                  teacher_forcing_ratio=0.,
@@ -57,7 +44,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         super().__init__()
         self.save_hyperparameters()
         self.autorecurrent = auto_reccurent
-        l = decoder_model.L
+        l = recurrent_net.L
 
         # Model
         self.teacher_forcing = teacher_forcing_ratio
@@ -75,31 +62,23 @@ class Vec2Seq(pl.LightningModule, ABC):
             else np.min((recursion_limit, len(self.full_bank_lengths)))
         self.bank_lengths = self.full_bank_lengths[:recursion_limit]
 
-        # Encoder/decoder
-        self.decoder = decoder_model
-        self.bidirectional = 2 if self.decoder.bidirectional else 1
+        # Encoder/rec_net
+        self.rec_net = recurrent_net
 
-        self.h0_network = SequenceEncoder(in_features=100*23, out_features=5, n_hidden=128,
-                                          n_layers=3, dropout=0.6, bidirectional=True, in_channels=2, out_channels=2,
-                                          kernel_size=3, stride=5, padding=1)
-        self.h0_hidden = nn.Linear(5, self.decoder.lstm_layers * self.bidirectional * self.decoder.real_hidden_size)
-        self.h0_cell = nn.Linear(5,  self.decoder.lstm_layers * self.bidirectional * self.decoder.hidden_size)
-        # Connect embedded latent dimension to the initial hidden state of the decoder
-
-        # Connect output hidden states (in forward direction) to wavelet coefficient space
-        self.fc_out = [self.fc_network(out_features=length) for length in self.bank_lengths]
+        # Connect LSTM output to wavelet coefficient
+        self.rec_net.coeff_nets = [self.fc_network(out_features=length) for length in self.bank_lengths]
 
     def __str__(self):
         s = ''
         s += f'\nData'
-        s += f'\n\t Data size (B, {self.decoder.C}, {self.decoder.H}, {self.decoder.W})'
+        s += f'\n\t Data size (B, {self.rec_net.C}, {self.rec_net.H}, {self.rec_net.W})'
         s += f'\nRecurrent network'
         s += f'\n\t Wavelet "{self.wavelet.name}", which has decomposition length {self.wavelet.dec_len}'
         s += f'\n\t Full filter bank lengths {self.full_bank_lengths}'
         s += f'\n\t Recursion is over bank lengths {self.bank_lengths}, with recursion limit {self.recursion_limit}'
         if self.autorecurrent:
             s += f"\n\t Teacher forcing ratio={self.teacher_forcing}"
-        s += str(self.decoder)
+        s += str(self.rec_net)
         return s
 
     def load_checkpoint(self, path):
@@ -108,68 +87,46 @@ class Vec2Seq(pl.LightningModule, ABC):
     def forward(self, x: torch.tensor, teacher_forcing: float, **kwargs):
         """
         x,                 features = [B, Strands, Chromosomes, Sequence Length]
-        teacher_forcing,   the teacher forcing ratio for our RNN decoder (used in training)
+        teacher_forcing,   the teacher forcing ratio for our RNN rec_net (used in training)
         """
-        batch_size = x.shape[0]
+        # Get ground truth target sequence
+        true_bank = self.fwt(x.view(x.size(0), -1), wavelet=self.wavelet)
 
-        # Get ground truth for whole target sequence of signal
-        true_bank = self.fwt(x, wavelet=self.wavelet)
-        true_masked_recons = [torch.zeros(x.shape, device=device)]     # masked ground truth (zeroing higher spaces)
+        # Partial fidelity ground truth for, removing the contribution of coefficients further down the recurrence
+        true_masked_recons = [torch.zeros_like(x, device=device)]     # masked ground truth (zeroing higher spaces)
         for t in range(self.recursion_limit):
-            # Partial fidelity ground truth for, removing the contribution of coefficients further down the recurrence
             _true_masked_bank = [AD if i <= t else torch.zeros_like(AD) for i, AD in enumerate(true_bank)]
             true_masked_recons.append(ptwt.waverec(_true_masked_bank, self.wavelet).reshape(x.shape))
 
-        def recursion(_residual, _hidden, _cell, _pred_bank, _t):
-            """ in: residual signal, previous hidden and previous cell states
-                out: tensor (predictions) and new hidden and cell states
-            """
-            lstm_out, (_hidden, _cell) = self.decoder(_residual, _hidden, _cell)
-
-            _pred_bank[_t] = (self.fc_out[_t](lstm_out))
-            _reconstruction = ptwt.waverec(_pred_bank, self.wavelet).reshape(_residual.shape)
-
-            return _reconstruction, (_hidden, _cell), _pred_bank
-
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
-        init_method = 'learn'
-        if init_method == 'zeros':
-            hidden = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
-                                  batch_size,
-                                  self.decoder.real_hidden_size), device=device)
-            cell = torch.zeros((self.decoder.lstm_layers * self.bidirectional,
-                                batch_size,
-                                self.decoder.hidden_size), device=device)
-        elif init_method == 'means':
-            count_avg = torch.mean(x.reshape((x.shape[0], -1)), dim=1, keepdim=True)
-            hidden = count_avg.repeat(self.decoder.lstm_layers * self.bidirectional, 1, self.decoder.real_hidden_size)
-            cell = count_avg.repeat(self.decoder.lstm_layers * self.bidirectional, 1, self.decoder.hidden_size)
-        elif init_method == 'learn':
-            # We can also learn the initial states, which can improve training speed
-            hidden, cell = self.h0(x)
-        else:
-            raise NotImplementedError
-
-        # first LSTM input is the residual from the zero vector = [1, batch size, original sequence dim], i.e. x
+        hidden, cell = self.rec_net.init_states(x, "learn")
         partly_recon = torch.zeros(x.shape, device=device)
 
         # Recurrent outputs:
         #  the approximation/detail space coefficients, which gets refined at each step
         #  the corresponding reconstructed features
         #  the hidden embedding at that scale
-        predicted_bank = [torch.zeros((batch_size, length), device=device) for length in self.full_bank_lengths]
+        predicted_bank = [torch.zeros((x.size(0), length), device=device) for length in self.full_bank_lengths]
         pred_masked_recons = []
         hidden_embedding = [hidden]
+
+        def recursion(_residual, _hidden, _cell, _pred_bank, _t):
+            """ in: residual signal, previous hidden and previous cell states
+                out: tensor (predictions) and new hidden and cell states
+            """
+            coeff, (_hidden, _cell) = self.rec_net(_residual, _hidden, _cell, _t)
+            _pred_bank[_t] = coeff
+
+            _reconstruction = ptwt.waverec(_pred_bank, self.wavelet).reshape(_residual.shape)
+            # print(f" in recursion {output.shape}, new hidden {_hidden.shape} and new cell {_cell.shape}")
+            return _reconstruction, (_hidden, _cell), _pred_bank
 
         for t in range(self.recursion_limit):
 
             if self.autorecurrent:
-                # TODO: detach output so gradients don't flow through?
-                #  see https://discuss.pytorch.org/t/correct-way-to-train-without-teacher-forcing/15508
-
+                # TODO: detach output so gradients don't flow through? https://discuss.pytorch.org/t/correct-way-to-train-without-teacher-forcing/15508
                 # Teacher forcing
                 partly_recon = true_masked_recons[t] if random.random() < self.teacher_forcing else partly_recon
-
                 partly_recon, (hidden, cell), predicted_bank = recursion(x - partly_recon,
                                                                          hidden, cell, predicted_bank, t)
             else:
@@ -239,7 +196,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         }
 
 
-def create_vec2seq(decoder_model,
+def create_vec2seq(recurrent_net,
                    wavelet='haar',
                    auto_reccurent=False,
                    teacher_forcing_ratio=0.5,
@@ -247,9 +204,9 @@ def create_vec2seq(decoder_model,
                    recursion_limit=None,
                    dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
                    num_epochs=20, gpus=1,
-                   validation_hook_batch=None, test_hook_batch=None, run_id="Vec2Seq"):
+                   validation_hook_batch=None, test_hook_batch=None, project='WaveLSTM', run_id="null"):
 
-    _model = Vec2Seq(decoder_model=decoder_model,
+    _model = Vec2Seq(recurrent_net=recurrent_net,
                      wavelet=wavelet,
                      auto_reccurent=auto_reccurent,
                      teacher_forcing_ratio=teacher_forcing_ratio,
@@ -259,8 +216,8 @@ def create_vec2seq(decoder_model,
     print(_model)
 
     # Initialize wandb logger
-    wandb_logger = WandbLogger(project="WaveletVec2Seq",
-                               name=f"{run_id}",
+    wandb_logger = WandbLogger(project=project,
+                               name=run_id,
                                job_type='train')
 
     # Make all callbacks

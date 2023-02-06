@@ -9,11 +9,11 @@ class SequenceEncoder(nn.Module):
 
     def __init__(self,
                  in_features: int,
-                 out_features: int,
-                 n_hidden: int = 256,
+                 out_features: int = None,
+                 n_hidden: int = 128,
                  n_layers: int = 3,
                  dropout: float = 0.6,
-                 bidirectional: bool = False,
+                 bidirectional: bool = True,
                  in_channels: int = 2,
                  out_channels: int = 2,
                  kernel_size: int = 3,
@@ -59,7 +59,7 @@ class SequenceEncoder(nn.Module):
         else:
             self.fc = nn.Linear(2 * n_hidden, out_features)
 
-    def forward(self, x):
+    def forward(self, x, hidden=None, cell=None):
         # Take in batch_size x num_strands x num_chromosomes x sequence_length
 
         # Stack chromosomes
@@ -73,16 +73,22 @@ class SequenceEncoder(nn.Module):
         # LSTM layers
         self.lstm.flatten_parameters()                         # For multiple GPU cases
         d = 2 if self.bidirectional else 1
-        h0 = torch.zeros(self.n_layers * d, c_out.size(0), self.hidden_size).to(device)
-        c0 = torch.zeros(self.n_layers * d, c_out.size(0), self.hidden_size).to(device)
-        out, (hn, cn) = self.lstm(c_out, (h0, c0))
+
+        if hidden is None:
+            hidden = torch.zeros(self.n_layers * d, c_out.size(0), self.hidden_size).to(device)
+        if cell is None:
+            cell = torch.zeros(self.n_layers * d, c_out.size(0), self.hidden_size).to(device)
+
+        out, (hn, cn) = self.lstm(c_out, (hidden, cell))
 
         if self.bidirectional:
-            rnn_out = out[:, -1, :]
+            out = out[:, -1, :]
         else:
-            rnn_out = hn[-1]
+            out = hn[-1]
 
-        out = self.fc(rnn_out)
+        if self.latent_dim is not None:
+            out = self.fc(out)
+
         # print(f"in: {x.shape}, conv_out: {c_out.shape}, and LSTM out: {rnn_out.shape}, fc out {out.shape}")
 
         return out

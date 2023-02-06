@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from source.model.encoder.sequence_encoder import SequenceEncoder
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -10,18 +11,39 @@ class WaveletLSTM(nn.Module):
     def real_hidden_size(self):
         return self.proj_size if self.proj_size > 0 else self.hidden_size
 
-    @staticmethod
-    def calculate_output_length(length_in, kernel_size, stride=1, padding=0, dilation=1):
-        return (length_in + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
+    def init_states(self, batch, method):
+        batch_size = batch.size(0)
+        if method == 'zeros':
+            hidden = torch.zeros((self.lstm_layers * self.directions,
+                                  batch_size,
+                                  self.real_hidden_size), device=device)
+            cell = torch.zeros((self.lstm_layers * self.directions,
+                                batch_size,
+                                self.hidden_size), device=device)
+        elif method == 'means':
+            count_avg = torch.mean(batch.reshape((batch_size, -1)), dim=1, keepdim=True)
+            hidden = count_avg.repeat(self.lstm_layers * self.directions, 1, self.real_hidden_size)
+            cell = count_avg.repeat(self.lstm_layers * self.directions, 1, self.hidden_size)
+        elif method == 'learn':
+            # We can also learn the initial states, which often improves training speed
+            z = self.h0_network(batch)
+            hidden = torch.reshape(self.h0_hidden(z), (batch_size,
+                                                       self.lstm_layers * self.directions,
+                                                       self.real_hidden_size)).permute((1, 0, 2)).contiguous()
+            cell = torch.reshape(self.h0_cell(z), (batch_size,
+                                                   self.lstm_layers * self.directions,
+                                                   self.hidden_size)).permute((1, 0, 2)).contiguous()
+        else:
+            raise NotImplementedError
+
+        return hidden, cell
 
     def __str__(self):
         s = '\nWaveletLSTM'
-        s += f'\n\t Number of directions in LSTM cells {2 if self.bidirectional else 1}'
+        s += f'\n\t Number of directions in LSTM cells {self.directions}'
         s += f'\n\t Number of layers {self.lstm_layers}'
         s += f'\n\t Hidden/cell sizes {self.hidden_size}, with hidden projection to {self.proj_size} dimensions'
         s += f'\n\t {self.H} chromosomes, of length {self.W} and {self.C} channels'
-        if self.conv is not None:
-            s += f'\n\tConvolving the {self.C} channels before LSTM cells'
         return s
 
     def __init__(self, out_features: int, strands: int, chromosomes: int,
@@ -29,8 +51,8 @@ class WaveletLSTM(nn.Module):
                  layers: int,
                  bidirectional: bool,
                  proj_size=0,
-                 dropout=0,
-                 conv_layer=False,
+                 dropout=0.6,
+                 init="learn",
                  ):
         """
         out_features,  number of loci
@@ -44,22 +66,32 @@ class WaveletLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.lstm_layers = layers
         self.bidirectional = bidirectional
+        self.directions = 2 if self.bidirectional else 1
         self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
-        self.L = strands * chromosomes * out_features   # flat sequence length
+        self.L = self.C * self.H * self.W
         self.proj_size = proj_size
 
-        if conv_layer:
-            kernel_size = 1
-            stride = 1
-            self.conv = nn.Conv1d(in_channels=strands,  # * chromosomes,
-                                  out_channels=1,
-                                  kernel_size=kernel_size,
-                                  stride=stride,
-                                  )
-            h_in = self.calculate_output_length(self.W * self.H, kernel_size=kernel_size, stride=stride)
+        self.test_stack = "strands"
+        if self.test_stack is None:
+            # no sequence inside rec cell, everything is concatenated
+            h_in = self.C * self.H * self.W
+        elif self.test_stack == "strands":
+            # just strands splitting into LSTM sequence
+            h_in = self.H * self.W
+        elif self.test_stack == "chr":
+            # just strands splitting into LSTM sequence
+            h_in = self.C * self.W
+        elif self.test_stack == "both":
+            # chromosomes and strands splitting into LSTM sequence
+            h_in = self.W
         else:
-            self.conv = None
-            h_in = self.L
+            raise NotImplementedError
+
+        # LSTM
+        if init == "learn":
+            self.h0_network = SequenceEncoder(in_features=self.H * self.W, out_features=5, in_channels=2,  out_channels=2)
+            self.h0_hidden = nn.Linear(5, self.lstm_layers * self.directions * self.real_hidden_size)
+            self.h0_cell = nn.Linear(5, self.lstm_layers * self.directions * self.hidden_size)
 
         self.rnn = nn.LSTM(input_size=h_in,
                            hidden_size=self.hidden_size,
@@ -70,31 +102,35 @@ class WaveletLSTM(nn.Module):
                            dropout=dropout,
                            )
 
-    def forward(self, x, hidden, cell):
+    def forward(self, x, hidden, cell, t):
         """
         x,             [batch size, strands, chromosomes, seq_length, H_in=1]
         hidden,        [n layers * n directions, batch size, hid dim or proj_size]
         cell,          [n layers * n directions, batch size, hid dim or proj_size]
         """
-        # print(x.shape)
-        if self.conv is not None:
-            # x = x.reshape((x.size(0), self.C * self.H, self.W))    # stack strands along chromosome index
-            x = x.reshape((x.size(0), self.C, self.H * self.W))      # stack strands, concat chromosome along signal
-            x_in = self.conv(x)
-        else:
-            x_in = x.reshape((x.size(0), -1)).unsqueeze(1)     # Stack all CHW dimensions
+        if self.test_stack is None:
+            x = x.view((x.size(0), 1, -1))                     # Stack all CHW dimensions
+        elif self.test_stack == "strands":
+            x = x.view((x.size(0), x.size(1), -1))
+        elif self.test_stack == "chr":
+            x = x.permute((0, 2, 1, 3)).contiguous()
+            x = x.view((x.size(0), x.size(1), -1))
+        elif self.test_stack == "both":
+            x = x.view((x.size(0), x.size(1) * x.size(2), -1))
 
-        output, (hidden, cell) = self.rnn(x_in, (hidden, cell))
-        # print(f"{self.rnn}:"
-        #       f" \n\t-> in: x: {x.shape}  x_in {x_in.shape}"
-        #       f" \n\t-> out: {output.shape}, {hidden.shape}, {cell.shape}")
-
-        # TODO: For bidirectional LSTMs, h_n is not equivalent to the last element of output; the former contains the final forward and reverse hidden states, while the latter contains the final forward hidden state and the initial reverse hidden state.
+        output, (hidden, cell) = self.rnn(x, (hidden, cell))
         # output = [B, seq_len=1, H_out * num_directions]
         # hidden = [layers * num_directions, B, H_out]
         # cell   = [layers * num_directions, B, H_out]
+
         if self.bidirectional:
-            return output.squeeze(1), (hidden, cell)
+            # output = output.reshape((output.shape[0], -1))   # Stack final forward and initial reverse for both strands
+            output = output[:, -1, :]  # Take the the last seq (so last strand - or (TODO: chromosome)), and map to the output of all
+            coeff = (self.coeff_nets[t](output))
+
         else:
-            return output.squeeze(1), (hidden, cell)
+            raise NotImplementedError
+            output = output.squeeze(1)
+
+        return coeff, (hidden, cell)
 
