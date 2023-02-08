@@ -71,7 +71,7 @@ class WaveletLSTM(nn.Module):
         self.L = self.C * self.H * self.W
         self.proj_size = proj_size
 
-        self.test_stack = "strands"
+        self.test_stack = "chr"
         if self.test_stack is None:
             # no sequence inside rec cell, everything is concatenated
             h_in = self.C * self.H * self.W
@@ -79,8 +79,11 @@ class WaveletLSTM(nn.Module):
             # just strands splitting into LSTM sequence
             h_in = self.H * self.W
         elif self.test_stack == "chr":
-            # just strands splitting into LSTM sequence
+            # just chromosomes splitting into LSTM sequence
             h_in = self.C * self.W
+        elif self.test_stack == "features":
+            # sequence is along out_features
+            h_in = self.C * self.H
         elif self.test_stack == "both":
             # chromosomes and strands splitting into LSTM sequence
             h_in = self.W
@@ -104,19 +107,21 @@ class WaveletLSTM(nn.Module):
 
     def forward(self, x, hidden, cell, t):
         """
-        x,             [batch size, strands, chromosomes, seq_length, H_in=1]
+        x,             [batch size, strands, chromosomes, seq_length]
         hidden,        [n layers * n directions, batch size, hid dim or proj_size]
         cell,          [n layers * n directions, batch size, hid dim or proj_size]
         """
         if self.test_stack is None:
             x = x.view((x.size(0), 1, -1))                     # Stack all CHW dimensions
         elif self.test_stack == "strands":
-            x = x.view((x.size(0), x.size(1), -1))
+            pass
         elif self.test_stack == "chr":
             x = x.permute((0, 2, 1, 3)).contiguous()
-            x = x.view((x.size(0), x.size(1), -1))
+        elif self.test_stack == "features":
+            x = x.permute((0, 3, 1, 2)).contiguous()
         elif self.test_stack == "both":
             x = x.view((x.size(0), x.size(1) * x.size(2), -1))
+        x = x.view((x.size(0), x.size(1), -1))
 
         output, (hidden, cell) = self.rnn(x, (hidden, cell))
         # output = [B, seq_len=1, H_out * num_directions]
@@ -126,7 +131,7 @@ class WaveletLSTM(nn.Module):
         if self.bidirectional:
             # output = output.reshape((output.shape[0], -1))   # Stack final forward and initial reverse for both strands
             output = output[:, -1, :]  # Take the the last seq (so last strand - or (TODO: chromosome)), and map to the output of all
-            coeff = (self.coeff_nets[t](output))
+            coeff = self.coeff_nets[t](output)
 
         else:
             raise NotImplementedError

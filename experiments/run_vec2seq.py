@@ -67,7 +67,7 @@ def run_ascat_example(project_name):
     print(dm)
     print(len(dm.train_set))
 
-    seq_length = 100
+    seq_length = 128
     chromosomes = 23
     strands = 2
 
@@ -86,7 +86,7 @@ def run_ascat_example(project_name):
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                     test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
                                     project="WaveLSTM-ASCAT",
-                                    run_id=f"hdim{wave_lstm.hidden_size}proj{wave_lstm.proj_size}"
+                                    run_id=f"(N, H, C*W) - last 512"
                                     )
 
     # Train model

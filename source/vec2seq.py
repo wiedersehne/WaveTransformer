@@ -21,14 +21,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Vec2Seq(pl.LightningModule, ABC):
 
-    def fwt(self, x, wavelet):
-        # Fast wavelet transform
-        x_flat = torch.reshape(x, (x.size(0), -1))
-        return ptwt.wavedec(x_flat, wavelet, mode='zero', level=self.max_level)
+    def fwt(self, x):
+        # Fast wavelet transform, splitting along the strand index, stacking over chromosomes
+        filter_bank = ptwt.wavedec(x.reshape((x.size(0), -1)), self.wavelet, mode='zero', level=self.max_level)
+        return filter_bank
 
-    @staticmethod
-    def fc_network(out_features, hidden=128):
-        return nn.LazyLinear(out_features=out_features, device=device)
+    def masked_truth(self, x):
+        """
+        Get the target sequence, from sequentially reconstructing masked (finer scales), true coefficients
+        """
+        true_bank = self.fwt(x)
+        masked_truth = [torch.zeros_like(x, device=device)]
+        for t in range(self.recursion_limit):
+            masked_bank = [coeff if i <= t else torch.zeros_like(coeff) for i, coeff in enumerate(true_bank)]
+            next_recon = ptwt.waverec(masked_bank, self.wavelet).reshape(x.shape)
+            masked_truth.append(next_recon)
+        return masked_truth
 
     def __init__(self,
                  recurrent_net,
@@ -49,14 +57,11 @@ class Vec2Seq(pl.LightningModule, ABC):
         # Model
         self.teacher_forcing = teacher_forcing_ratio
 
-        # Data
-
         # Wavelet
         self.wavelet = pywt.Wavelet(wavelet)
         # # Calculate the filter bank sizes, and recursion depth
         self.max_level = pywt.dwt_max_level(l, wavelet) - coarse_skip
-        self.full_bank_lengths = [t.shape[1] for t in pywt.wavedec(np.zeros((1, l)), self.wavelet,
-                                                                   level=self.max_level)]
+        self.full_bank_lengths = [t.shape[1] for t in pywt.wavedec(np.zeros((1, l)), self.wavelet, level=self.max_level)]
         # Detail space lengths, then insert first approximation space length
         self.recursion_limit = len(self.full_bank_lengths) if recursion_limit is None \
             else np.min((recursion_limit, len(self.full_bank_lengths)))
@@ -66,7 +71,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         self.rec_net = recurrent_net
 
         # Connect LSTM output to wavelet coefficient
-        self.rec_net.coeff_nets = [self.fc_network(out_features=length) for length in self.bank_lengths]
+        self.rec_net.coeff_nets = [nn.LazyLinear(out_features=length, device=device) for length in self.bank_lengths]
 
     def __str__(self):
         s = ''
@@ -89,14 +94,9 @@ class Vec2Seq(pl.LightningModule, ABC):
         x,                 features = [B, Strands, Chromosomes, Sequence Length]
         teacher_forcing,   the teacher forcing ratio for our RNN rec_net (used in training)
         """
-        # Get ground truth target sequence
-        true_bank = self.fwt(x.view(x.size(0), -1), wavelet=self.wavelet)
 
-        # Partial fidelity ground truth for, removing the contribution of coefficients further down the recurrence
-        true_masked_recons = [torch.zeros_like(x, device=device)]     # masked ground truth (zeroing higher spaces)
-        for t in range(self.recursion_limit):
-            _true_masked_bank = [AD if i <= t else torch.zeros_like(AD) for i, AD in enumerate(true_bank)]
-            true_masked_recons.append(ptwt.waverec(_true_masked_bank, self.wavelet).reshape(x.shape))
+        # Partial fidelity truth, removing (zeroing) the contribution of coefficients further down the recurrence
+        masked_truths = self.masked_truth(x)
 
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
         hidden, cell = self.rec_net.init_states(x, "learn")
@@ -114,33 +114,31 @@ class Vec2Seq(pl.LightningModule, ABC):
             """ in: residual signal, previous hidden and previous cell states
                 out: tensor (predictions) and new hidden and cell states
             """
-            coeff, (_hidden, _cell) = self.rec_net(_residual, _hidden, _cell, _t)
-            _pred_bank[_t] = coeff
-
+            _pred_bank[_t], (_hidden, _cell) = self.rec_net(_residual, _hidden, _cell, _t)
             _reconstruction = ptwt.waverec(_pred_bank, self.wavelet).reshape(_residual.shape)
-            # print(f" in recursion {output.shape}, new hidden {_hidden.shape} and new cell {_cell.shape}")
+
             return _reconstruction, (_hidden, _cell), _pred_bank
 
         for t in range(self.recursion_limit):
 
             if self.autorecurrent:
+                raise NotImplementedError # come back to this with latest changes
                 # TODO: detach output so gradients don't flow through? https://discuss.pytorch.org/t/correct-way-to-train-without-teacher-forcing/15508
                 # Teacher forcing
-                partly_recon = true_masked_recons[t] if random.random() < self.teacher_forcing else partly_recon
+                partly_recon = masked_truths[t] if random.random() < self.teacher_forcing else partly_recon
                 partly_recon, (hidden, cell), predicted_bank = recursion(x - partly_recon,
                                                                          hidden, cell, predicted_bank, t)
             else:
-                partly_recon, (hidden, cell), predicted_bank = recursion(x - true_masked_recons[t],
+                partly_recon, (hidden, cell), predicted_bank = recursion(x - masked_truths[t],
                                                                          hidden, cell, predicted_bank, t)
 
             # Record next output for target sequence
             pred_masked_recons.append(partly_recon)
             hidden_embedding.append(hidden)
 
-        meta_data = {'true_bank': true_bank,
-                     'filter_bank': predicted_bank,
+        meta_data = {'filter_bank': predicted_bank,
                      'pred_recurrent_recon': pred_masked_recons,
-                     'true_recurrent_recon': true_masked_recons[1:],      # exclude first, as this is the zero vector
+                     'true_recurrent_recon': masked_truths[1:],      # exclude first, as this is the zero vector
                      'hidden': hidden_embedding
                      }
 
@@ -153,11 +151,11 @@ class Vec2Seq(pl.LightningModule, ABC):
         recon_flat = torch.flatten(x_recon, start_dim=1)
         recons_loss = F.mse_loss(x_flat, recon_flat)
 
-        true_bank = meta['true_bank']
-        bank_loss = 0
-        for level in range(len(true_bank)):
-            bank_loss += F.mse_loss(true_bank[level], meta["filter_bank"][level])
-        return {'loss': recons_loss, 'bank_loss': bank_loss}
+        # true_bank = meta['true_bank']
+        # bank_loss = 0
+        # for level in range(len(true_bank)):
+        #     bank_loss += F.mse_loss(true_bank[level], meta["filter_bank"][level])
+        return {'loss': recons_loss}    # , 'bank_loss': 0
 
     def training_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
