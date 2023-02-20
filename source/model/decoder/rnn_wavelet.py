@@ -11,33 +11,6 @@ class WaveletLSTM(nn.Module):
     def real_hidden_size(self):
         return self.proj_size if self.proj_size > 0 else self.hidden_size
 
-    def init_states(self, batch, method):
-        batch_size = batch.size(0)
-        if method == 'zeros':
-            hidden = torch.zeros((self.lstm_layers * self.directions,
-                                  batch_size,
-                                  self.real_hidden_size), device=device)
-            cell = torch.zeros((self.lstm_layers * self.directions,
-                                batch_size,
-                                self.hidden_size), device=device)
-        elif method == 'means':
-            count_avg = torch.mean(batch.reshape((batch_size, -1)), dim=1, keepdim=True)
-            hidden = count_avg.repeat(self.lstm_layers * self.directions, 1, self.real_hidden_size)
-            cell = count_avg.repeat(self.lstm_layers * self.directions, 1, self.hidden_size)
-        elif method == 'learn':
-            # We can also learn the initial states, which often improves training speed
-            z = self.h0_network(batch)
-            hidden = torch.reshape(self.h0_hidden(z), (batch_size,
-                                                       self.lstm_layers * self.directions,
-                                                       self.real_hidden_size)).permute((1, 0, 2)).contiguous()
-            cell = torch.reshape(self.h0_cell(z), (batch_size,
-                                                   self.lstm_layers * self.directions,
-                                                   self.hidden_size)).permute((1, 0, 2)).contiguous()
-        else:
-            raise NotImplementedError
-
-        return hidden, cell
-
     def __str__(self):
         s = '\nWaveletLSTM'
         s += f'\n\t Number of directions in LSTM cells {self.directions}'
@@ -70,8 +43,9 @@ class WaveletLSTM(nn.Module):
         self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
         self.L = self.C * self.H * self.W
         self.proj_size = proj_size
+        self.convolutional = False
 
-        self.test_stack = "chr"
+        self.test_stack = None
         if self.test_stack is None:
             # no sequence inside rec cell, everything is concatenated
             h_in = self.C * self.H * self.W
@@ -105,7 +79,7 @@ class WaveletLSTM(nn.Module):
                            dropout=dropout,
                            )
 
-    def forward(self, x, hidden, cell, t):
+    def forward(self, x, hidden_state, t):
         """
         x,             [batch size, strands, chromosomes, seq_length]
         hidden,        [n layers * n directions, batch size, hid dim or proj_size]
@@ -123,7 +97,7 @@ class WaveletLSTM(nn.Module):
             x = x.view((x.size(0), x.size(1) * x.size(2), -1))
         x = x.view((x.size(0), x.size(1), -1))
 
-        output, (hidden, cell) = self.rnn(x, (hidden, cell))
+        output, (hidden, cell) = self.rnn(x, hidden_state)
         # output = [B, seq_len=1, H_out * num_directions]
         # hidden = [layers * num_directions, B, H_out]
         # cell   = [layers * num_directions, B, H_out]
@@ -139,3 +113,25 @@ class WaveletLSTM(nn.Module):
 
         return coeff, (hidden, cell)
 
+    def init_states(self, batch, method='learn'):
+        batch_size = batch.size(0)
+        if method == 'zeros':
+            hidden = torch.zeros((self.lstm_layers * self.directions,
+                                  batch_size,
+                                  self.real_hidden_size), device=device)
+            cell = torch.zeros((self.lstm_layers * self.directions,
+                                batch_size,
+                                self.hidden_size), device=device)
+        elif method == 'learn':
+            # We can also learn the initial states, which often improves training speed
+            z = self.h0_network(batch)
+            hidden = torch.reshape(self.h0_hidden(z), (batch_size,
+                                                       self.lstm_layers * self.directions,
+                                                       self.real_hidden_size)).permute((1, 0, 2)).contiguous()
+            cell = torch.reshape(self.h0_cell(z), (batch_size,
+                                                   self.lstm_layers * self.directions,
+                                                   self.hidden_size)).permute((1, 0, 2)).contiguous()
+        else:
+            raise NotImplementedError
+
+        return hidden, cell

@@ -13,17 +13,24 @@ class LatentSpace(Callback):
     Callback to view latent embedding of labelled data,
      plotting the first two principal components of the latent embedding
     """
-    def __init__(self, val_samples=None, test_samples=None, label_dict=None):
+    def __init__(self, val_samples=None, test_samples=None):
         super().__init__()
         self.val_features = val_samples['feature'] if val_samples is not None else None
         self.val_labels = val_samples['label'] if val_samples is not None else None
+        if val_samples is not None:
+            self.val_sub_labels = val_samples['sub_label'] if "sub_label" in val_samples.keys() else None
+        else:
+            self.val_sub_labels = None
 
         self.test_features = test_samples['feature'] if test_samples is not None else None
         self.test_labels = test_samples['label'] if test_samples is not None else None
+        if test_samples is not None:
+            self.test_sub_labels = test_samples['sub_label'] if "sub_label" in test_samples.keys() else None
+        else:
+            self.test_sub_labels = None
 
-        self.label_dict = label_dict
-
-    def embedding(self, x, labels, metric, eigenvalues, title=""):
+    @staticmethod
+    def embedding(x, labels, sub_labels, metric, eigenvalues, title=""):
 
         # standardise
         x -= x.min(axis=0)
@@ -33,20 +40,21 @@ class LatentSpace(Callback):
         fig, (ax, ax_hist) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [9, 1]})
         fig.suptitle(title)
 
-        sc = ax.scatter(x[:, 0], x[:, 1], s=s, c=labels, alpha=0.5)
+        if sub_labels is not None:
+            marker_list = ["o", "$T$", "P", "X"]
+            for idx, sub_cls in enumerate(np.unique(sub_labels)):
+                mask = np.ma.getmask(np.ma.masked_equal(sub_labels, sub_cls))
+                sc = ax.scatter(x[mask, 0], x[mask, 1], c=labels[mask], marker=marker_list[idx], alpha=0.5)  # s=s,
+        else:
+            sc = ax.scatter(x[:, 0], x[:, 1], c=labels, alpha=0.5)  # s=s,
 
         # Produce a legend for the classes (colors), we only want to show at most ? of them in the legend.
-        if self.label_dict is not None:
-            kw = dict(num=len(np.unique(labels)), color=sc.cmap(0.7), fmt="Class {x}",
-                      func=lambda l: (np.sqrt(s / .3) - 0) / 10)
-        else:
-            kw = dict(num=len(np.unique(labels)))
-
-        # legend1 = ax.legend(*sc.legend_elements(**kw),
-        #                     loc="upper left", title="Class", ncol=2,
-        #                     bbox_to_anchor=(0.05, 1.15), fancybox=True, shadow=True,
-        #                     )
-        # ax.add_artist(legend1)
+        kw = dict(num=len(np.unique(labels)))
+        legend1 = ax.legend(*sc.legend_elements(**kw),
+                            loc="upper left", title="Class", ncol=2,
+                            bbox_to_anchor=(0.05, 1.15), fancybox=True, shadow=True,
+                            )
+        ax.add_artist(legend1)
 
         # Produce a legend for the metric (sizes), we only want to show at most 4 of them in the legend.
         kw = dict(prop="sizes", num=4, color=sc.cmap(0.7), fmt="{x:.1f}",
@@ -65,12 +73,12 @@ class LatentSpace(Callback):
         plt.tight_layout()
         return fig
 
-    def run_callback(self, features, labels, log_name, _trainer, _pl_module, teacher_forcing):
+    def run_callback(self, features, labels, sub_labels, log_name, _trainer, _pl_module, teacher_forcing):
         # Push features through the model
         _, meta_result = _pl_module(features, teacher_forcing=teacher_forcing)
 
         features = np.asarray(features.detach().cpu(), dtype=np.float)
-        labels = np.asarray(labels.detach().cpu(), dtype=np.int)
+        # labels = np.asarray(labels.detach().cpu(), dtype=np.int)
 
         metric = np.mean(features.reshape((features.shape[0], -1)), axis=-1)
         wandb_images = []
@@ -87,7 +95,7 @@ class LatentSpace(Callback):
             # print(f"h: z shape {z.shape} -> {_ev.shape}")
 
             wandb_images.append(
-                wandb.Image(self.embedding(_pc, labels, metric, _ev,
+                wandb.Image(self.embedding(_pc, labels, sub_labels, metric, _ev,
                                            title=f"Hidden LSTM embedding, layer {level + 1}",
                                            )
                             )
@@ -101,14 +109,21 @@ class LatentSpace(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
         if self.val_features is not None:
             features = self.val_features.to(device=pl_module.device)
-            labels = self.val_labels.to(device=pl_module.device)
-            self.run_callback(features, labels, "Val:EmbeddingPCA", trainer, pl_module, 0.)
+            if features.dim() == 3:
+                features = features.unsqueeze(2)
+            # labels = self.val_labels.to(device=pl_module.device)
+            print(f"{features.shape}, {self.val_labels.shape}, {self.val_sub_labels.shape if self.val_sub_labels is not None else 0}")
+            self.run_callback(features, self.val_labels, self.val_sub_labels,
+                              "Val:EmbeddingPCA", trainer, pl_module, 0.)
 
     def on_test_epoch_end(self, trainer, pl_module):
         if self.test_features is not None:
             features = self.test_features.to(device=pl_module.device)
-            labels = self.test_labels.to(device=pl_module.device)
-            self.run_callback(features, labels, "Test:EmbeddingPCA", trainer, pl_module, 0.)
+            if features.dim() == 3:
+                features = features.unsqueeze(2)
+            # labels = self.test_labels.to(device=pl_module.device)
+            self.run_callback(features, self.test_labels, self.test_sub_labels,
+                              "Test:EmbeddingPCA", trainer, pl_module, 0.)
 
 
 class FeatureSpace1d(Callback):
@@ -161,6 +176,9 @@ class FeatureSpace1d(Callback):
     def on_test_epoch_end(self, trainer, pl_module):
         if self.test_features is not None:
             features = self.test_features.to(device=pl_module.device)
+            if features.dim() == 3:
+                features = features.unsqueeze(2)
+
             labels = self.test_labels.to(device=pl_module.device)
             self.run_callback(features, labels, "Test_PredictionHeatmap", trainer, pl_module)
 
@@ -218,6 +236,9 @@ class RecurrentFeatureSpace1d(Callback):
     def on_test_epoch_end(self, trainer, pl_module):
         if self.val_features is not None:
             features = self.test_features.to(device=pl_module.device)
+            if features.dim() == 3:
+                features = features.unsqueeze(2)
+
             labels = self.test_labels.to(device=pl_module.device)
             self.run_callback(features, labels, "Test_PredictionHeatmapRecurrent", trainer, pl_module)
 
@@ -234,7 +255,7 @@ def heatmap(prediction, truth, labels, title):
 
     sns.heatmap(prediction, ax=ax1, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
     sns.heatmap(truth, ax=ax2, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
-    sns.heatmap(np.log(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)
+    sns.heatmap(np.sqrt(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)
 
     for ax in [ax1, ax2, ax3]:
         ax.set_xlabel("Locus")
@@ -246,7 +267,7 @@ def heatmap(prediction, truth, labels, title):
 
     ax1.set_title(f'Prediction')
     ax2.set_title(f'Truth')
-    ax3.set_title(f'Log absolute error')
+    ax3.set_title(f'Root absolute error')
     fig.suptitle(title)
     plt.tight_layout()
     return fig

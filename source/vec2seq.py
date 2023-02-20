@@ -52,7 +52,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         super().__init__()
         self.save_hyperparameters()
         self.autorecurrent = auto_reccurent
-        l = recurrent_net.L
+        l = recurrent_net.C * recurrent_net.H * recurrent_net.W
 
         # Model
         self.teacher_forcing = teacher_forcing_ratio
@@ -94,13 +94,11 @@ class Vec2Seq(pl.LightningModule, ABC):
         x,                 features = [B, Strands, Chromosomes, Sequence Length]
         teacher_forcing,   the teacher forcing ratio for our RNN rec_net (used in training)
         """
+        if x.dim() == 3:
+            x = x.unsqueeze(2)
 
         # Partial fidelity truth, removing (zeroing) the contribution of coefficients further down the recurrence
         masked_truths = self.masked_truth(x)
-
-        # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
-        hidden, cell = self.rec_net.init_states(x, "learn")
-        partly_recon = torch.zeros(x.shape, device=device)
 
         # Recurrent outputs:
         #  the approximation/detail space coefficients, which gets refined at each step
@@ -108,33 +106,22 @@ class Vec2Seq(pl.LightningModule, ABC):
         #  the hidden embedding at that scale
         predicted_bank = [torch.zeros((x.size(0), length), device=device) for length in self.full_bank_lengths]
         pred_masked_recons = []
-        hidden_embedding = [hidden]
 
-        def recursion(_residual, _hidden, _cell, _pred_bank, _t):
-            """ in: residual signal, previous hidden and previous cell states
-                out: tensor (predictions) and new hidden and cell states
-            """
-            _pred_bank[_t], (_hidden, _cell) = self.rec_net(_residual, _hidden, _cell, _t)
-            _reconstruction = ptwt.waverec(_pred_bank, self.wavelet).reshape(_residual.shape)
-
-            return _reconstruction, (_hidden, _cell), _pred_bank
-
+        # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
+        hidden_state = self.rec_net.init_states(x)
+        hidden_embedding = [hidden_state[0]]
+        partly_recon = torch.zeros(x.shape, device=device)
         for t in range(self.recursion_limit):
 
             if self.autorecurrent:
-                raise NotImplementedError # come back to this with latest changes
-                # TODO: detach output so gradients don't flow through? https://discuss.pytorch.org/t/correct-way-to-train-without-teacher-forcing/15508
-                # Teacher forcing
-                partly_recon = masked_truths[t] if random.random() < self.teacher_forcing else partly_recon
-                partly_recon, (hidden, cell), predicted_bank = recursion(x - partly_recon,
-                                                                         hidden, cell, predicted_bank, t)
+                raise NotImplementedError  # come back to this if needed - check against old commit to re-implement
             else:
-                partly_recon, (hidden, cell), predicted_bank = recursion(x - masked_truths[t],
-                                                                         hidden, cell, predicted_bank, t)
+                predicted_bank[t], hidden_state = self.rec_net(x - masked_truths[t], hidden_state, t)
+                partly_recon = ptwt.waverec(predicted_bank, self.wavelet).reshape(x.shape)
 
             # Record next output for target sequence
             pred_masked_recons.append(partly_recon)
-            hidden_embedding.append(hidden)
+            hidden_embedding.append(hidden_state[0])
 
         meta_data = {'filter_bank': predicted_bank,
                      'pred_recurrent_recon': pred_masked_recons,
@@ -179,7 +166,7 @@ class Vec2Seq(pl.LightningModule, ABC):
         return test_loss_dict['loss']
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters()) #, lr=0.01)
+        optimizer = optim.Adam(self.parameters())
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
@@ -252,10 +239,11 @@ def create_vec2seq(recurrent_net,
 
     callbacks = [checkpoint_callback,
                  early_stop_callback,
-                 viz_embedding_callback,
                  viz_prediction_callback,
                  viz_rnn_callback
                  ]
+    if not recurrent_net.convolutional:
+        callbacks.append(viz_embedding_callback)
 
     _trainer = pl.Trainer(
         default_root_dir=dir_path,
@@ -263,7 +251,7 @@ def create_vec2seq(recurrent_net,
         callbacks=callbacks,
         enable_checkpointing=True,
         max_epochs=num_epochs,
-        check_val_every_n_epoch=5,  # int(np.floor(num_epochs/3)),
+        check_val_every_n_epoch=5,
         gpus=gpus,
     )
 
