@@ -86,10 +86,10 @@ class WaveletConv1dLSTM(nn.Module):
             raise NotImplementedError
         else:
             output = output[:, -1, :, :].permute(0, 2, 1)  # Take the last of `temporal` seq
-            output = self.conv_list[t](output).squeeze(1)
-            coeff = self.coeff_nets[t](output)
+            latent = self.conv_list[t](output).squeeze(1)
+            coeff = self.coeff_nets[t](latent)
 
-        return coeff, (h_next, c_next)
+        return coeff, (h_next, c_next), latent
 
     def init_states(self, batch, method='learn'):
         batch_size = batch.size(0)

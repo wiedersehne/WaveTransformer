@@ -10,7 +10,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from source.custom_callbacks.waveLSTM import *
+from source.custom_callbacks.callback_waveLSTM import *
 
 import ptwt
 import pywt
@@ -109,19 +109,19 @@ class Vec2Seq(pl.LightningModule, ABC):
 
         # Initialise hidden and cell states, and first LSTM input (usually this would be a <SOS> token in NLP)
         hidden_state = self.rec_net.init_states(x)
-        hidden_embedding = [hidden_state[0]]
+        hidden_embedding = []
         partly_recon = torch.zeros(x.shape, device=device)
         for t in range(self.recursion_limit):
 
             if self.autorecurrent:
                 raise NotImplementedError  # come back to this if needed - check against old commit to re-implement
             else:
-                predicted_bank[t], hidden_state = self.rec_net(x - masked_truths[t], hidden_state, t)
+                predicted_bank[t], hidden_state, latent = self.rec_net(x - masked_truths[t], hidden_state, t)
                 partly_recon = ptwt.waverec(predicted_bank, self.wavelet).reshape(x.shape)
 
             # Record next output for target sequence
             pred_masked_recons.append(partly_recon)
-            hidden_embedding.append(hidden_state[0])
+            hidden_embedding.append(latent)
 
         meta_data = {'filter_bank': predicted_bank,
                      'pred_recurrent_recon': pred_masked_recons,
@@ -240,10 +240,9 @@ def create_vec2seq(recurrent_net,
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_prediction_callback,
-                 viz_rnn_callback
+                 viz_rnn_callback,
+                 viz_embedding_callback
                  ]
-    if not recurrent_net.convolutional:
-        callbacks.append(viz_embedding_callback)
 
     _trainer = pl.Trainer(
         default_root_dir=dir_path,

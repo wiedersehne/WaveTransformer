@@ -104,14 +104,14 @@ class WaveletLSTM(nn.Module):
 
         if self.bidirectional:
             # output = output.reshape((output.shape[0], -1))   # Stack final forward and initial reverse for both strands
-            output = output[:, -1, :]  # Take the the last seq (so last strand - or (TODO: chromosome)), and map to the output of all
-            coeff = self.coeff_nets[t](output)
+            latent = output[:, -1, :]  # Take the the last seq (so last strand - or (TODO: chromosome)), and map to the output of all
+            coeff = self.coeff_nets[t](latent)
 
         else:
             raise NotImplementedError
             output = output.squeeze(1)
 
-        return coeff, (hidden, cell)
+        return coeff, (hidden, cell), latent
 
     def init_states(self, batch, method='learn'):
         batch_size = batch.size(0)

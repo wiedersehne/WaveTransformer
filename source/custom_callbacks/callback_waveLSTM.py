@@ -86,8 +86,9 @@ class LatentSpace(Callback):
         # Hidden embedding vectors
         for level, z in enumerate(meta_result['hidden']):
             z = z.detach().cpu()
-            # Concatenate hidden vectors in each direction
-            z = torch.concat([z[i, :, :] for i in range(z.shape[0])], dim=-1)
+            if len(z.shape) == 3:
+                # Concatenate hidden vectors in each direction
+                z = torch.concat([z[i, :, :] for i in range(z.shape[0])], dim=-1)
             # Plot first two principal components of the latent space
             (U, S, V) = torch.pca_lowrank(z, niter=2)
             _pc = np.asarray(torch.matmul(z, V[:, :2]))

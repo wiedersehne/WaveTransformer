@@ -35,7 +35,7 @@ def run_sinusoidal_example(project_name):
                                       hidden_size=256, layers=1)
 
     # Create model
-    model, trainer = create_vec2seq(recurrent_net=wave_lstm,
+    model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
                                     wavelet='coif4', # 'bior4.4',  #'coif4'
                                     coarse_skip=0,
                                     recursion_limit=10,
@@ -115,6 +115,6 @@ def get_config(project='ascat'):
 
 if __name__ == '__main__':
 
-    # run_ascat_example("ascat")
-    run_sinusoidal_example("sinusoidal")
+    run_ascat_example("ascat")
+    # run_sinusoidal_example("sinusoidal")
 
