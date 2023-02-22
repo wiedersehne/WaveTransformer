@@ -222,17 +222,17 @@ def create_vec2seq(recurrent_net,
         verbose=verbose
     )
 
-    viz_embedding_callback = LatentSpace(
+    viz_embedding_callback = ViewEmbedding(
         val_samples=validation_hook_batch,
         test_samples=test_hook_batch
     )
 
-    viz_prediction_callback = FeatureSpace1d(
+    viz_prediction_callback = ViewSignal(
         val_samples=validation_hook_batch,
         test_samples=test_hook_batch
     )
 
-    viz_rnn_callback = RecurrentFeatureSpace1d(
+    viz_rnn_callback = ViewRecurrentSignal(
         val_samples=validation_hook_batch,
         test_samples=test_hook_batch
     )
