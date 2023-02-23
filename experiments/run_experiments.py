@@ -36,11 +36,11 @@ def run_sinusoidal_example(project_name):
 
     # Create model
     model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
-                                    wavelet='coif4', # 'bior4.4',  #'coif4'
+                                    wavelet='bior4.4',  #  'coif4'
                                     coarse_skip=0,
-                                    recursion_limit=10,
+                                    recursion_limit=None,
                                     auto_reccurent=False,
-                                    num_epochs=100,
+                                    num_epochs=25,
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                     test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
                                     project="WaveLSTM-sinusoidal-devel",
@@ -76,16 +76,16 @@ def run_ascat_example(project_name):
                                       hidden_size=256, layers=1)
 
     # Create model
-    model, trainer = create_vec2seq(recurrent_net=wave_lstm,
+    model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
                                     wavelet='haar',  # 'bior4.4',  # 'coif4'
                                     coarse_skip=0,
                                     recursion_limit=10,
                                     auto_reccurent=False,
-                                    num_epochs=100,
+                                    num_epochs=25,
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                     test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
                                     project="WaveLSTM-ASCAT-devel",
-                                    run_id=f"LSTM-concatall"
+                                    run_id=f"devel"
                                     )
 
     # Train model
@@ -105,7 +105,7 @@ def get_config(project='ascat'):
                 }
     elif project == "sinusoidal":
         return {"batch_size": 64,
-                "classes": 3,
+                "classes": 10,
                 "samples": 2000,
                 "sig_length": 256,
                 "channels": 2,
@@ -115,6 +115,6 @@ def get_config(project='ascat'):
 
 if __name__ == '__main__':
 
-    run_ascat_example("ascat")
-    # run_sinusoidal_example("sinusoidal")
+    # run_ascat_example("ascat")
+    run_sinusoidal_example("sinusoidal")
 
