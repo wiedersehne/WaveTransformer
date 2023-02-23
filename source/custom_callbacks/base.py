@@ -2,6 +2,7 @@
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import scipy.cluster.hierarchy as hcluster
 
 
 class BaseCallback(object):
@@ -53,58 +54,72 @@ class BaseCallback(object):
                             c=labels, alpha=0.5,  s=scaled_metric)
 
         # Produce a legend for the classes (colors), we only want to show at most ? of them in the legend.
-        if labels is not None:
-            kw = dict(num=len(np.unique(labels)))
-            legend1 = ax.legend(*sc.legend_elements(**kw),
-                                loc="upper left", title="Class", ncol=2,
-                                bbox_to_anchor=(0.05, 1.15), fancybox=True, shadow=True,
-                                )
-            ax.add_artist(legend1)
+        # if labels is not None:
+        #     kw = dict(num=len(np.unique(labels)))
+        #     legend1 = ax.legend(*sc.legend_elements(**kw),
+        #                         loc="upper left", title="Class", ncol=2,
+        #                         bbox_to_anchor=(0.05, 1.15), fancybox=True, shadow=True,
+        #                         )
+        #     ax.add_artist(legend1)
 
         # Produce a legend for the metric (sizes), we only want to show at most 4 of them in the legend.
-        if metric is not None:
-            kw = dict(prop="sizes", num=4, color=sc.cmap(0.7), fmt="{x:.1f}",
-                      func=lambda _s: (np.sqrt(_s / .3) - 5) / 10)
-            legend2 = ax.legend(*sc.legend_elements(**kw),
-                                loc="upper right", title="Count", ncol=2,
-                                bbox_to_anchor=(0.95, 1.15), fancybox=True, shadow=True,
-                                )
+        # if metric is not None:
+        #     kw = dict(prop="sizes", num=4, color=sc.cmap(0.7), fmt="{x:.1f}",
+        #               func=lambda _s: (np.sqrt(_s / .3) - 5) / 10)
+        #     legend2 = ax.legend(*sc.legend_elements(**kw),
+        #                         loc="upper right", title="Count", ncol=2,
+        #                         bbox_to_anchor=(0.95, 1.15), fancybox=True, shadow=True,
+        #                         )
 
         ax.set_xlabel("Principal component $1$")
         ax.set_ylabel("Principal component $2$")
 
         return ax
 
-    @staticmethod
-    def heatmap(prediction, truth, labels, title):
+    def heatmap(self, prediction, truth, labels, pc=None, title=""):
         """
-        Create a subfigure of truth, prediction, error, and latent embedding
-        TODO: add docstring
+        Create a subfigure of truth, prediction.
+            Options: if pc is None then in 3rd figure we plot the root absolute error, else we plot the pc and order by
+                     1st pc
         """
-        permute_idx = np.argsort(labels)
+        if pc is None:
+            permute_idx = np.argsort(labels)
+        else:
+            # permute_idx = np.argsort(pc[:, 0] + pc[:, 1])
+            clusters = hcluster.fclusterdata(pc, 0.15, criterion="distance")
+            permute_idx = np.argsort(clusters)
+
+
         prediction = prediction[permute_idx, :]
         truth = truth[permute_idx, :]
+        pc = pc[permute_idx, :] if pc is not None else None
         labels = labels[permute_idx]
 
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(nrows=2, ncols=2, figsize=(12, 18))
+        fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, figsize=(18, 8))
+
+        # Plot prediction and truth
         vmax = np.min((5, np.max((truth.max(), prediction.max()))))
         vmin = np.min((1, np.min((truth.min(), prediction.min()))))
-
         sns.heatmap(prediction, ax=ax1, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
+        ax1.set_title(f'Prediction')
         sns.heatmap(truth, ax=ax2, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
-        sns.heatmap(np.sqrt(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)
+        ax2.set_title(f'Truth')
 
         for ax in [ax1, ax2, ax3]:
             ax.set_xlabel("Locus")
-            ax.set_ylabel("Sample label (permuted to order)")
+            ax.set_ylabel(f"Sample (permuted by {'label' if pc is None else 'PC1'})")
             ax.xaxis.set_tick_params(rotation=90)
             for idx, label in enumerate(ax.yaxis.get_ticklabels()):
                 if idx % 5 != 0:
                     label.set_visible(False)
 
-        ax1.set_title(f'Prediction')
-        ax2.set_title(f'Truth')
-        ax3.set_title(f'Root absolute error')
+        if pc is not None:
+            self.embedding(ax3, pc, labels=labels)
+            ax3.set_title(f'Latent embedding')
+        else:
+            sns.heatmap(np.sqrt(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)
+            ax3.set_title(f'Root absolute error')
+
         fig.suptitle(title)
         plt.tight_layout()
 

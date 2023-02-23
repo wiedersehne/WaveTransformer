@@ -35,7 +35,7 @@ class ViewEmbedding(Callback, BaseCallback):
             fig, (ax, ax_hist) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [9, 1]})
             fig.suptitle(f"Hidden LSTM embedding, layer {level + 1}")
             self.embedding(ax, _pc, labels=labels, sub_labels=sub_labels,
-                           metric= np.mean(features.reshape((features.shape[0], -1)), axis=-1)
+                           metric=None,  # np.mean(features.reshape((features.shape[0], -1)), axis=-1)
                            )
             ax_hist.barh(np.arange(_ev.shape[0]) + 1, _ev, orientation='horizontal')
             ax_hist.set_xlabel("EV")
@@ -110,21 +110,31 @@ class ViewRecurrentSignal(Callback, BaseCallback):
     def run_callback(self, features, labels, log_name, _trainer, _pl_module):
         # Push features through the model
         _, meta_result = _pl_module(features, teacher_forcing=0)
+        features = np.asarray(features.detach().cpu())
 
         recurrent_recon = [np.asarray(x.detach().cpu()) for x in meta_result['pred_recurrent_recon']]
         true_recurrent_recon = [np.asarray(x.detach().cpu()) for x in meta_result['true_recurrent_recon']]
         labels = np.asarray(labels.detach().cpu(), dtype=np.int)
 
+        recurrent_proj_hidden = []
+        for z in meta_result['hidden']:
+            (U, S, V) = torch.pca_lowrank(z, niter=2)
+            recurrent_proj_hidden.append(np.asarray(torch.matmul(z, V[:, :2]).detach().cpu()))
+
         # Plot only first strand
-        recurrent_recon = [x[:, 0, :, :] for x in recurrent_recon]
-        true_recurrent_recon = [x[:, 0, :, :] for x in true_recurrent_recon]
+        # recurrent_recon = [x[:, 0, :, :] for x in recurrent_recon]
+        # true_recurrent_recon = [x[:, 0, :, :] for x in true_recurrent_recon]
 
         _trainer.logger.experiment.log({
             log_name:
                 [wandb.Image(self.heatmap(recon_rnn.reshape(features.shape[0], -1),
-                                          true_rnn.reshape(features.shape[0], -1),
-                                          labels, title=f"Depth index {depth}"))
-                 for depth, (recon_rnn, true_rnn) in enumerate(zip(recurrent_recon, true_recurrent_recon))]
+                                          features.reshape(features.shape[0], -1), #true_rnn.reshape(features.shape[0], -1),
+                                          labels,
+                                          proj_hidden_rnn,
+                                          title=f"Depth index {depth}"))
+                 for depth, (recon_rnn, true_rnn, proj_hidden_rnn) in enumerate(zip(recurrent_recon,
+                                                                                true_recurrent_recon,
+                                                                                recurrent_proj_hidden))]
         })
         plt.close('all')
 
