@@ -2,10 +2,8 @@ import torch
 import TCGA
 import SignalTransformData as STD
 
-from source.vec2seq import create_vec2seq
-from source.model.decoder.rnn_wavelet import WaveletLSTM
-from source.model.decoder.rnn_lstmwavelet import WaveletConv1dLSTM
-from source.model.encoder.sequence_encoder import SequenceEncoder
+from source.model.encoder.encoder import create_autoencoder
+from source.model.encoder.WaveConvLSTM import WaveletConv1dLSTM
 
 # Set device
 torch.cuda.empty_cache()
@@ -29,23 +27,20 @@ def run_sinusoidal_example(project_name):
     strands = config["channels"]
 
     # Create decoder
-    wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                            hidden_size=256, layers=1, bidirectional=True, proj_size=50)
     wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
                                       hidden_size=256, layers=1, proj_size=50)
 
     # Create model
-    model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
-                                    wavelet='bior4.4',  #  'coif4'
-                                    coarse_skip=0,
-                                    recursion_limit=None,
-                                    auto_reccurent=False,
-                                    num_epochs=25,
-                                    validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
-                                    test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
-                                    project="WaveLSTM-sinusoidal-devel",
-                                    run_id=f"devel"
-                                    )
+    model, trainer = create_autoencoder(recurrent_net=wave_convlstm,
+                                        wavelet='bior4.4',  #  'coif4'
+                                        coarse_skip=0,
+                                        recursion_limit=None,
+                                        num_epochs=25,
+                                        validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
+                                        test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
+                                        project="WaveLSTM-sinusoidal-devel",
+                                        run_id=f"devel"
+                                        )
 
     # Train model
     trainer.fit(model, datamodule=dm)
@@ -70,23 +65,19 @@ def run_ascat_example(project_name):
     strands = 2
 
     # Create decoder
-    wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                            hidden_size=256, layers=1, bidirectional=True, proj_size=50)
     wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1, proj_size=50)
+                                      hidden_size=256, layers=1, proj_size=100)
 
     # Create model
-    model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
-                                    wavelet='haar',  # 'bior4.4',  # 'coif4'
-                                    coarse_skip=0,
-                                    recursion_limit=10,
-                                    auto_reccurent=False,
-                                    num_epochs=100,
-                                    validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
-                                    test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
-                                    project="WaveLSTM-ASCAT-devel",
-                                    run_id=f"devel"
-                                    )
+    model, trainer = create_autoencoder(recurrent_net=wave_convlstm,
+                                        coarse_skip=0,
+                                        recursion_limit=10,
+                                        num_epochs=100,
+                                        validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
+                                        test_hook_batch=next(iter(dm.test_dataloader())),       # TODO: update to all set
+                                        project="WaveLSTM-ASCAT-devel",
+                                        run_id=f"devel"
+                                        )
 
     # Train model
     trainer.fit(model, datamodule=dm)
