@@ -19,7 +19,7 @@ import random
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class Vec2Seq(pl.LightningModule, ABC):
+class Encoder(pl.LightningModule, ABC):
 
     def fwt(self, x):
         # Fast wavelet transform, splitting along the strand index, stacking over chromosomes
@@ -41,8 +41,6 @@ class Vec2Seq(pl.LightningModule, ABC):
     def __init__(self,
                  recurrent_net,
                  wavelet="haar",
-                 auto_reccurent=False,
-                 teacher_forcing_ratio=0.,
                  coarse_skip: int = 0,
                  recursion_limit=None,
                  ):
@@ -51,11 +49,7 @@ class Vec2Seq(pl.LightningModule, ABC):
 
         super().__init__()
         self.save_hyperparameters()
-        self.autorecurrent = auto_reccurent
         l = recurrent_net.C * recurrent_net.H * recurrent_net.W
-
-        # Model
-        self.teacher_forcing = teacher_forcing_ratio
 
         # Wavelet
         self.wavelet = pywt.Wavelet(wavelet)
@@ -81,18 +75,15 @@ class Vec2Seq(pl.LightningModule, ABC):
         s += f'\n\t Wavelet "{self.wavelet.name}", which has decomposition length {self.wavelet.dec_len}'
         s += f'\n\t Full filter bank lengths {self.full_bank_lengths}'
         s += f'\n\t Recursion is over bank lengths {self.bank_lengths}, with recursion limit {self.recursion_limit}'
-        if self.autorecurrent:
-            s += f"\n\t Teacher forcing ratio={self.teacher_forcing}"
         s += str(self.rec_net)
         return s
 
     def load_checkpoint(self, path):
         return self.load_from_checkpoint(path)
 
-    def forward(self, x: torch.tensor, teacher_forcing: float, **kwargs):
+    def forward(self, x: torch.tensor):
         """
         x,                 features = [B, Strands, Chromosomes, Sequence Length]
-        teacher_forcing,   the teacher forcing ratio for our RNN rec_net (used in training)
         """
         if x.dim() == 3:
             x = x.unsqueeze(2)
@@ -113,11 +104,8 @@ class Vec2Seq(pl.LightningModule, ABC):
         partly_recon = torch.zeros(x.shape, device=device)
         for t in range(self.recursion_limit):
 
-            if self.autorecurrent:
-                raise NotImplementedError  # come back to this if needed - check against old commit to re-implement
-            else:
-                predicted_bank[t], hidden_state, latent = self.rec_net(x - masked_truths[t], hidden_state, t)
-                partly_recon = ptwt.waverec(predicted_bank, self.wavelet).reshape(x.shape)
+            predicted_bank[t], hidden_state, latent = self.rec_net(x - masked_truths[t], hidden_state, t)
+            partly_recon = ptwt.waverec(predicted_bank, self.wavelet).reshape(x.shape)
 
             # Record next output for target sequence
             pred_masked_recons.append(partly_recon)
@@ -146,21 +134,21 @@ class Vec2Seq(pl.LightningModule, ABC):
 
     def training_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
-        recon, meta_results = self(sequences, teacher_forcing=self.teacher_forcing)
+        recon, meta_results = self(sequences)
         train_loss_dict = self.loss_function(sequences, recon, meta=meta_results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
-        recon, meta_results = self(sequences, teacher_forcing=0.)
+        recon, meta_results = self(sequences)
         val_loss_dict = self.loss_function(sequences, recon, meta=meta_results)
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
-        recon, meta_results = self(sequences, teacher_forcing=0.)
+        recon, meta_results = self(sequences)
         test_loss_dict = self.loss_function(sequences, recon, meta=meta_results)
         self.log("test_loss", test_loss_dict['loss'], prog_bar=True, logger=True)
         return test_loss_dict['loss']
@@ -181,20 +169,16 @@ class Vec2Seq(pl.LightningModule, ABC):
         }
 
 
-def create_vec2seq(recurrent_net,
-                   wavelet='haar',
-                   auto_reccurent=False,
-                   teacher_forcing_ratio=0.5,
-                   coarse_skip=0,
-                   recursion_limit=None,
-                   dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
-                   num_epochs=20, gpus=1,
-                   validation_hook_batch=None, test_hook_batch=None, project='WaveLSTM', run_id="null"):
+def create_autoencoder(recurrent_net,
+                       wavelet='haar',
+                       coarse_skip=0,
+                       recursion_limit=None,
+                       dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
+                       num_epochs=20, gpus=1,
+                       validation_hook_batch=None, test_hook_batch=None, project='WaveLSTM', run_id="null"):
 
-    _model = Vec2Seq(recurrent_net=recurrent_net,
+    _model = Encoder(recurrent_net=recurrent_net,
                      wavelet=wavelet,
-                     auto_reccurent=auto_reccurent,
-                     teacher_forcing_ratio=teacher_forcing_ratio,
                      coarse_skip=coarse_skip,
                      recursion_limit=recursion_limit,
                      )

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from source.model.decoder.Conv1dLSTM import Conv1dLSTM
+from source.model.encoder.Conv1dLSTM import Conv1dLSTM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

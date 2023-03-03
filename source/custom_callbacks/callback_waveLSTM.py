@@ -19,7 +19,7 @@ class ViewEmbedding(Callback, BaseCallback):
 
     def run_callback(self, features, labels, sub_labels, log_name, _trainer, _pl_module):
         # Push features through the model
-        _, meta_result = _pl_module(features, teacher_forcing=0)
+        _, meta_result = _pl_module(features)
         features = np.asarray(features.detach().cpu(), dtype=np.float)
 
         # Hidden embedding vectors
@@ -73,7 +73,7 @@ class ViewSignal(Callback, BaseCallback):
 
     def run_callback(self, features, labels, log_name, _trainer, _pl_module):
         # Push features through the model
-        recon, meta_result = _pl_module(features, teacher_forcing=0)
+        recon, meta_result = _pl_module(features)
 
         recon = np.asarray(recon.detach().cpu())
         features = np.asarray(features.detach().cpu())
@@ -109,7 +109,7 @@ class ViewRecurrentSignal(Callback, BaseCallback):
 
     def run_callback(self, features, labels, log_name, _trainer, _pl_module):
         # Push features through the model
-        _, meta_result = _pl_module(features, teacher_forcing=0)
+        _, meta_result = _pl_module(features)
         features = np.asarray(features.detach().cpu())
 
         recurrent_recon = [np.asarray(x.detach().cpu()) for x in meta_result['pred_recurrent_recon']]
