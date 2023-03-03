@@ -47,12 +47,6 @@ class WaveletConv1dLSTM(nn.Module):
         self.pooled_width = pool_output_length(self.width, 3, stride=2)
 
         # LSTM
-        if init == "learn":
-            self.h0_network = SequenceEncoder(in_features=self.H * self.W, out_features=5,
-                                              in_channels=2, out_channels=2)
-            self.h0_hidden = nn.Linear(5, self.lstm_layers * self.directions * self.real_hidden_size * self.W)
-            self.h0_cell = nn.Linear(5, self.lstm_layers * self.directions * self.hidden_size * self.W)
-
         self.rnn = Conv1dLSTM(input_size=self.channels,
                               hidden_size=self.hidden_size,
                               kernel_size=3,
@@ -89,29 +83,13 @@ class WaveletConv1dLSTM(nn.Module):
 
         return coeff, (h_next, c_next), latent
 
-    def init_states(self, batch, method='zeros'):
-        batch_size = batch.size(0)
-        if method == 'zeros':
-            hidden = torch.zeros((self.lstm_layers * self.directions,
-                                  batch_size,
-                                  self.real_hidden_size,
-                                  self.W), device=device)
-            cell = torch.zeros((self.lstm_layers * self.directions,
-                                batch_size,
-                                self.hidden_size,
-                                self.W), device=device)
-        elif method == 'learn':
-            # We can also learn the initial states, which often improves training speed
-            z = self.h0_network(batch)
-            hidden = torch.reshape(self.h0_hidden(z), (batch_size,
-                                                       self.lstm_layers * self.directions,
-                                                       self.real_hidden_size,
-                                                       -1)).permute((1, 0, 2, 3)).contiguous()
-            cell = torch.reshape(self.h0_cell(z), (batch_size,
-                                                   self.lstm_layers * self.directions,
-                                                   self.hidden_size,
-                                                   -1)).permute((1, 0, 2, 3)).contiguous()
-        else:
-            raise NotImplementedError
-
+    def init_states(self, batch):
+        hidden = torch.zeros((self.lstm_layers * self.directions,
+                              batch.size(0),
+                              self.real_hidden_size,
+                              self.W), device=device)
+        cell = torch.zeros((self.lstm_layers * self.directions,
+                            batch.size(0),
+                            self.hidden_size,
+                            self.W), device=device)
         return hidden, cell

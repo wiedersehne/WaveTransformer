@@ -73,7 +73,7 @@ def run_ascat_example(project_name):
     wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
                             hidden_size=256, layers=1, bidirectional=True, proj_size=50)
     wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1, proj_size=0)
+                                      hidden_size=256, layers=1, proj_size=50)
 
     # Create model
     model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
