@@ -11,10 +11,10 @@ from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from source.custom_callbacks.callback_waveLSTM import *
+from source.model.encoder.WaveConvLSTM import WaveletConv1dLSTM
 
 import ptwt
 import pywt
-import random
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -39,7 +39,8 @@ class Encoder(pl.LightningModule, ABC):
         return masked_truth
 
     def __init__(self,
-                 recurrent_net,
+                 seq_length, strands, chromosomes,
+                 hidden_size=256, layers=1, proj_size=0,
                  wavelet="haar",
                  coarse_skip: int = 0,
                  recursion_limit=None,
@@ -49,7 +50,8 @@ class Encoder(pl.LightningModule, ABC):
 
         super().__init__()
         self.save_hyperparameters()
-        l = recurrent_net.C * recurrent_net.H * recurrent_net.W
+
+        l = seq_length * strands * chromosomes
 
         # Wavelet
         self.wavelet = pywt.Wavelet(wavelet)
@@ -62,10 +64,9 @@ class Encoder(pl.LightningModule, ABC):
         self.bank_lengths = self.full_bank_lengths[:recursion_limit]
 
         # Encoder/rec_net
-        self.rec_net = recurrent_net
-
-        # Connect LSTM output to wavelet coefficient
-        self.rec_net.coeff_nets = [nn.LazyLinear(out_features=length, device=device) for length in self.bank_lengths]
+        self.rec_net = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
+                                         bank_lengths=self.bank_lengths,
+                                         hidden_size=hidden_size, layers=layers, proj_size=proj_size)
 
     def __str__(self):
         s = ''
@@ -169,7 +170,8 @@ class Encoder(pl.LightningModule, ABC):
         }
 
 
-def create_autoencoder(recurrent_net,
+def create_autoencoder(seq_length, strands, chromosomes,
+                       hidden_size=256, layers=1, proj_size=0,
                        wavelet='haar',
                        coarse_skip=0,
                        recursion_limit=None,
@@ -177,7 +179,8 @@ def create_autoencoder(recurrent_net,
                        num_epochs=20, gpus=1,
                        validation_hook_batch=None, test_hook_batch=None, project='WaveLSTM', run_id="null"):
 
-    _model = Encoder(recurrent_net=recurrent_net,
+    _model = Encoder(seq_length, strands, chromosomes,
+                     hidden_size=hidden_size, layers=layers, proj_size=proj_size,
                      wavelet=wavelet,
                      coarse_skip=coarse_skip,
                      recursion_limit=recursion_limit,

@@ -19,6 +19,7 @@ class WaveletConv1dLSTM(nn.Module):
         return s
 
     def __init__(self, out_features: int, strands: int, chromosomes: int,
+                 bank_lengths,
                  hidden_size,
                  layers: int = 1,
                  proj_size: int = 0,
@@ -52,13 +53,17 @@ class WaveletConv1dLSTM(nn.Module):
                               )
 
         # Output layers
-        # Network to reduce to 1 channel before putting through coeff net.
-        conv_list = [nn.Conv1d(in_channels=self.W,
+        # CNN to reduce to 1 channel before putting through network to predict coefficients.
+        conv_list = [nn.Conv1d(in_channels=self.pooled_width,
                                out_channels=1,
                                kernel_size=3,
-                               ) for _ in range(20)]     # todo: create correct number of nets
+                               padding=1,
+                               ) for _ in range(len(bank_lengths))]
         self.conv_list = nn.ModuleList(conv_list)
-        # TODO: define the FC output coeff_nets here
+        # Connect reduced channel to wavelet coefficient
+        self.coeff_nets = [nn.Linear(in_features=self.real_hidden_size, out_features=length, device=device)
+                           for length in bank_lengths]
+        self.coeff_nets = nn.ModuleList(conv_list)
 
     def forward(self, x, hidden_state, t):
         """
@@ -66,12 +71,16 @@ class WaveletConv1dLSTM(nn.Module):
         hidden,        [n layers, batch size, hid dim]
         cell,          [n layers, batch size, hid dim]
         """
-        # Determine which dimensions are used as input channels
+        # Use both strands and chromosomes as channels
         x = x.view((x.size(0), self.channels, -1))
-        # x = self.pool(x)
 
+        # Pooling input layer, reducing the width W of the signals (similar function to a word embedding)
+        x = self.pool(x)
+
+        # Recurrent
         output, (h_next, c_next) = self.rnn(x, hidden_state)        # output: (N, L, H_out, Signal length)
 
+        # Output layer
         output = output[:, -1, :, :].permute(0, 2, 1)               # Take the last of `temporal` seq
         latent = self.conv_list[t](output).squeeze(1)
         coeff = self.coeff_nets[t](latent)

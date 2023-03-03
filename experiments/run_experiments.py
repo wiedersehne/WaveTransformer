@@ -3,7 +3,6 @@ import TCGA
 import SignalTransformData as STD
 
 from source.model.encoder.encoder import create_autoencoder
-from source.model.encoder.WaveConvLSTM import WaveletConv1dLSTM
 
 # Set device
 torch.cuda.empty_cache()
@@ -22,16 +21,9 @@ def run_sinusoidal_example(project_name):
     dm = STD.data_modules.simulated.SinusoidalDataModule(**config)
     print(dm)
 
-    seq_length = config["sig_length"]
-    chromosomes = 1
-    strands = config["channels"]
-
-    # Create decoder
-    wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1, proj_size=50)
-
     # Create model
-    model, trainer = create_autoencoder(recurrent_net=wave_convlstm,
+    model, trainer = create_autoencoder(seq_length=config["sig_length"], strands=config["channels"], chromosomes=1,
+                                        hidden_size=256, layers=1, proj_size=50,
                                         wavelet='bior4.4',  #  'coif4'
                                         coarse_skip=0,
                                         recursion_limit=None,
@@ -60,18 +52,10 @@ def run_ascat_example(project_name):
     print(dm)
     print(len(dm.train_set))
 
-    seq_length = 90
-    chromosomes = 23
-    strands = 2
-
-    # Create decoder
-    wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1, proj_size=100)
-
     # Create model
-    model, trainer = create_autoencoder(recurrent_net=wave_convlstm,
-                                        coarse_skip=0,
-                                        recursion_limit=10,
+    model, trainer = create_autoencoder(seq_length=90, strands=2, chromosomes=23,
+                                        hidden_size=256, layers=1, proj_size=100,
+                                        coarse_skip=0, recursion_limit=10,
                                         num_epochs=100,
                                         validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                         test_hook_batch=next(iter(dm.test_dataloader())),       # TODO: update to all set
