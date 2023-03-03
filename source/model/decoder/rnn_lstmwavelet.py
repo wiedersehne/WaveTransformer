@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from source.model.encoder.sequence_encoder import SequenceEncoder
 from source.model.decoder.Conv1dLSTM import Conv1dLSTM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -19,7 +18,6 @@ class WaveletConv1dLSTM(nn.Module):
     def __init__(self, out_features: int, strands: int, chromosomes: int,
                  hidden_size,
                  layers: int = 1,
-                 init="learn",
                  proj_size: int = 0,
                  ):
         """
