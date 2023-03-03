@@ -20,6 +20,7 @@ class WaveletConv1dLSTM(nn.Module):
                  hidden_size,
                  layers: int = 1,
                  init="learn",
+                 proj_size: int = 0,
                  ):
         """
         out_features,  number of loci
@@ -29,8 +30,9 @@ class WaveletConv1dLSTM(nn.Module):
         n_layers,      the number of LSTM layers
         """
         super().__init__()
-
+        self.proj_size = proj_size
         self.hidden_size = hidden_size
+        self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
         self.lstm_layers = layers
         self.bidirectional, self.directions = False, 1
         self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
@@ -46,27 +48,23 @@ class WaveletConv1dLSTM(nn.Module):
 
         # LSTM
         if init == "learn":
-            self.h0_network = SequenceEncoder(in_features=self.H * self.W, out_features=5, in_channels=2, out_channels=2)
-            self.h0_hidden = nn.Linear(5, self.lstm_layers * self.directions * self.hidden_size * self.W)
+            self.h0_network = SequenceEncoder(in_features=self.H * self.W, out_features=5,
+                                              in_channels=2, out_channels=2)
+            self.h0_hidden = nn.Linear(5, self.lstm_layers * self.directions * self.real_hidden_size * self.W)
             self.h0_cell = nn.Linear(5, self.lstm_layers * self.directions * self.hidden_size * self.W)
 
         self.rnn = Conv1dLSTM(input_size=self.channels,
                               hidden_size=self.hidden_size,
                               kernel_size=3,
                               num_layers=self.lstm_layers,
-                              batch_first=True
+                              proj_size=self.proj_size
                               )
         # If we use the ConvLSTM, we need to reduce to 1 channel before putting through coeff net.
         conv_list = [nn.Conv1d(in_channels=self.W,
                                out_channels=1,
                                kernel_size=3,
-                               stride=3) for _ in range(20)]     # todo: create correct number of nets
+                               ) for _ in range(20)]     # todo: create correct number of nets
         self.conv_list = nn.ModuleList(conv_list)
-
-        # self.conv_net = nn.Conv1d(in_channels=self.hidden_dim[-1],
-        #                           out_channels=1,
-        #                           kernel_size=3,
-        #                           stride=3)
 
     def forward(self, x, hidden_state, t):
         """
@@ -91,20 +89,23 @@ class WaveletConv1dLSTM(nn.Module):
 
         return coeff, (h_next, c_next), latent
 
-    def init_states(self, batch, method='learn'):
+    def init_states(self, batch, method='zeros'):
         batch_size = batch.size(0)
         if method == 'zeros':
             hidden = torch.zeros((self.lstm_layers * self.directions,
                                   batch_size,
-                                  self.hidden_size,
-                                  -1), device=device)
-            cell = torch.zeros_like(hidden, device=device)
+                                  self.real_hidden_size,
+                                  self.W), device=device)
+            cell = torch.zeros((self.lstm_layers * self.directions,
+                                batch_size,
+                                self.hidden_size,
+                                self.W), device=device)
         elif method == 'learn':
             # We can also learn the initial states, which often improves training speed
             z = self.h0_network(batch)
             hidden = torch.reshape(self.h0_hidden(z), (batch_size,
                                                        self.lstm_layers * self.directions,
-                                                       self.hidden_size,
+                                                       self.real_hidden_size,
                                                        -1)).permute((1, 0, 2, 3)).contiguous()
             cell = torch.reshape(self.h0_cell(z), (batch_size,
                                                    self.lstm_layers * self.directions,

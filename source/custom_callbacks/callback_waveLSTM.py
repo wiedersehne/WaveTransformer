@@ -35,7 +35,7 @@ class ViewEmbedding(Callback, BaseCallback):
             fig, (ax, ax_hist) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [9, 1]})
             fig.suptitle(f"Hidden LSTM embedding, layer {level + 1}")
             self.embedding(ax, _pc, labels=labels, sub_labels=sub_labels,
-                           metric=None,  # np.mean(features.reshape((features.shape[0], -1)), axis=-1)
+                           metric=np.mean(features.reshape((features.shape[0], -1)), axis=-1)   # None
                            )
             ax_hist.barh(np.arange(_ev.shape[0]) + 1, _ev, orientation='horizontal')
             ax_hist.set_xlabel("EV")
@@ -119,7 +119,7 @@ class ViewRecurrentSignal(Callback, BaseCallback):
         recurrent_proj_hidden = []
         for z in meta_result['hidden']:
             (U, S, V) = torch.pca_lowrank(z, niter=2)
-            recurrent_proj_hidden.append(np.asarray(torch.matmul(z, V[:, :2]).detach().cpu()))
+            recurrent_proj_hidden.append(np.asarray(torch.matmul(z, V).detach().cpu()))
 
         # Plot only first strand
         # recurrent_recon = [x[:, 0, :, :] for x in recurrent_recon]

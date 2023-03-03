@@ -32,7 +32,7 @@ def run_sinusoidal_example(project_name):
     wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
                             hidden_size=256, layers=1, bidirectional=True, proj_size=50)
     wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1)
+                                      hidden_size=256, layers=1, proj_size=50)
 
     # Create model
     model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
@@ -65,7 +65,7 @@ def run_ascat_example(project_name):
     print(dm)
     print(len(dm.train_set))
 
-    seq_length = 128
+    seq_length = 90
     chromosomes = 23
     strands = 2
 
@@ -73,7 +73,7 @@ def run_ascat_example(project_name):
     wave_lstm = WaveletLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
                             hidden_size=256, layers=1, bidirectional=True, proj_size=50)
     wave_convlstm = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
-                                      hidden_size=256, layers=1)
+                                      hidden_size=256, layers=1, proj_size=0)
 
     # Create model
     model, trainer = create_vec2seq(recurrent_net=wave_convlstm,
@@ -81,7 +81,7 @@ def run_ascat_example(project_name):
                                     coarse_skip=0,
                                     recursion_limit=10,
                                     auto_reccurent=False,
-                                    num_epochs=25,
+                                    num_epochs=100,
                                     validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                     test_hook_batch=next(iter(dm.test_dataloader())),        # TODO: update to all set
                                     project="WaveLSTM-ASCAT-devel",
@@ -99,7 +99,7 @@ def run_ascat_example(project_name):
 
 def get_config(project='ascat'):
     if project == 'ascat':
-        return {"batch_size": 64,
+        return {"batch_size": 128,
                 "cancer_types": ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],
                 # "wgd": False,
                 }
@@ -115,6 +115,6 @@ def get_config(project='ascat'):
 
 if __name__ == '__main__':
 
-    # run_ascat_example("ascat")
-    run_sinusoidal_example("sinusoidal")
+    run_ascat_example("ascat")
+    # run_sinusoidal_example("sinusoidal")
 

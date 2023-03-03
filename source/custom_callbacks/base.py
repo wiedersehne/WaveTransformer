@@ -86,9 +86,8 @@ class BaseCallback(object):
             permute_idx = np.argsort(labels)
         else:
             # permute_idx = np.argsort(pc[:, 0] + pc[:, 1])
-            clusters = hcluster.fclusterdata(pc, 0.15, criterion="distance")
+            clusters = hcluster.fclusterdata(pc, 0.10, criterion="distance")
             permute_idx = np.argsort(clusters)
-
 
         prediction = prediction[permute_idx, :]
         truth = truth[permute_idx, :]
@@ -107,14 +106,14 @@ class BaseCallback(object):
 
         for ax in [ax1, ax2, ax3]:
             ax.set_xlabel("Locus")
-            ax.set_ylabel(f"Sample (permuted by {'label' if pc is None else 'PC1'})")
+            ax.set_ylabel(f"Sample (permuted by {'label' if pc is None else 'hierarchical latent clustering'})")
             ax.xaxis.set_tick_params(rotation=90)
             for idx, label in enumerate(ax.yaxis.get_ticklabels()):
                 if idx % 5 != 0:
                     label.set_visible(False)
 
         if pc is not None:
-            self.embedding(ax3, pc, labels=labels)
+            self.embedding(ax3, pc, labels=labels, metric=np.mean(truth.reshape((truth.shape[0], -1)), axis=-1))
             ax3.set_title(f'Latent embedding')
         else:
             sns.heatmap(np.sqrt(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)

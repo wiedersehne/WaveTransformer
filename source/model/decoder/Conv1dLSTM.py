@@ -8,7 +8,8 @@ class Conv1dLSTMCell(nn.Module):
     def __init__(self, input_dim,
                  hidden_size: int = 128,
                  kernel_size: int = 3,
-                 bias: bool = True):
+                 bias: bool = True,
+                 proj_size: int = 0):
         """
         Initialize ConvLSTM cell.
 
@@ -27,27 +28,35 @@ class Conv1dLSTMCell(nn.Module):
         super(Conv1dLSTMCell, self).__init__()
 
         self.input_dim = input_dim
+        self.proj_size = proj_size
         self.hidden_size = hidden_size
+        self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
 
         self.kernel_size = kernel_size
         self.padding = kernel_size // 2
         self.bias = bias
 
-        self.conv = nn.Conv1d(in_channels=self.input_dim + self.hidden_size,
+        self.conv = nn.Conv1d(in_channels=self.input_dim + self.real_hidden_size,
                               out_channels=4 * self.hidden_size,
                               kernel_size=self.kernel_size,
                               padding=self.padding,
                               bias=self.bias)
+        self.conv_proj = nn.Conv1d(in_channels=self.hidden_size,
+                                   out_channels=self.real_hidden_size,
+                                   kernel_size=self.kernel_size,
+                                   padding=self.padding,
+                                   bias=self.bias)
 
     def forward(self, input_tensor, state):
         """
         input_tensor: (N, Channels, Width)
         """
         hidden, cell = state                                 # (N, hidden_size, width)
-        combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + hidden_size, width)
+
+        combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
         combined_conv = self.conv(combined)                  # (N, 4 * hidden_size, width)
 
-        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_size, dim=1)  # cc_ifog (N, hidden_size, width)
+        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_size, dim=1)  # (N, hidden_size, width)
         i = torch.sigmoid(cc_i)
         f = torch.sigmoid(cc_f)
         o = torch.sigmoid(cc_o)
@@ -56,11 +65,13 @@ class Conv1dLSTMCell(nn.Module):
         c_next = f * cell + i * g                             # (N, hidden_size, width)
         h_next = o * torch.tanh(c_next)                       # (N, hidden_size, width)
 
+        if self.proj_size > 0:
+            h_next = self.conv_proj(h_next)                       # (N, proj_size, width)
+
         return h_next, c_next
 
     def init_hidden(self, batch_size, width):
-        # height, width = image_size
-        return (torch.zeros(batch_size, self.hidden_size, width, device=self.conv.weight.device),
+        return (torch.zeros(batch_size, self.real_hidden_size, width, device=self.conv.weight.device),
                 torch.zeros(batch_size, self.hidden_size, width, device=self.conv.weight.device))
 
 
@@ -99,7 +110,6 @@ class Conv1dLSTM(nn.Module):
                  kernel_size,
                  num_layers,
                  bias=True,
-                 batch_first=False,
                  dropout=0,
                  bidirectional=0,
                  proj_size=0,
@@ -110,7 +120,6 @@ class Conv1dLSTM(nn.Module):
         # TODO
         assert dropout == 0, NotImplementedError
         assert bidirectional == 0, NotImplementedError
-        assert proj_size == 0, NotImplementedError
 
         # self._check_kernel_size_consistency(kernel_size)
 
@@ -124,7 +133,6 @@ class Conv1dLSTM(nn.Module):
         self.hidden_dim = hidden_size
         self.kernel_size = kernel_size
         self.num_layers = num_layers
-        self.batch_first = batch_first
         self.bias = bias
 
         cell_list = []
@@ -134,21 +142,21 @@ class Conv1dLSTM(nn.Module):
             cell_list.append(Conv1dLSTMCell(input_dim=cur_input_dim,
                                             hidden_size=self.hidden_dim[i],
                                             kernel_size=self.kernel_size[i],
-                                            bias=self.bias))
+                                            bias=self.bias,
+                                            proj_size=proj_size))
 
         self.cell_list = nn.ModuleList(cell_list)
 
-    def forward(self, input_tensor, hidden_state=None):
+    def forward(self, input_tensor, hidden_state):
         """
 
         Parameters
         ----------
-        input_tensor: todo
-            5-D Tensor either of shape (t, b, c, l) or (b, t, c, l)
-        hidden_state:  todo
-            None                   - Not implemented
-            last hidden/cell state - stateful implementation -
-                                (layers, N, H_out, signal length)
+        input_tensor:
+            5-D Tensor either of shape (b, t, c, l)
+        hidden_state:
+            last hidden/cell state
+                (layers, N, H_out, signal length)
 
         Returns
         -------
@@ -161,19 +169,12 @@ class Conv1dLSTM(nn.Module):
                     containing the final cell state for each element in the sequence
         """
 
-        if not self.batch_first:
-            raise NotImplementedError
-            # input_tensor = input_tensor.permute(1, 0, 2, 3)     # (t, b, c, l) -> (b, t, c, l)
-
         if input_tensor.dim() == 3:
             input_tensor = input_tensor.unsqueeze(1)                 # (b, t, c, signal_length)
 
         b, seq_len, _, sig_len = input_tensor.size()
 
-        if hidden_state is not None:
-            hidden, cell = hidden_state                               # (layers, N, H_out, signal length)
-        else:
-            raise NotImplementedError      # Only stateful case implemented
+        hidden, cell = hidden_state                               # (layers, N, H_out, signal length)
 
         output = []
         for xt in input_tensor.split(1, dim=1):
@@ -189,15 +190,10 @@ class Conv1dLSTM(nn.Module):
 
             # after iterating over layers
             output.append(hidden[-1])
+
         output = torch.stack(output, dim=1)         # (N, L, H_out, Signal length)
 
-        if self.batch_first:
-            return output, (hidden, cell)
-        else:
-            raise NotImplementedError
-
-    def _init_hidden(self, batch_size, signal_size):
-        raise NotImplementedError
+        return output, (hidden, cell)
 
     @staticmethod
     def _extend_for_multilayer(param, num_layers):
