@@ -7,12 +7,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class WaveletConv1dLSTM(nn.Module):
 
+    @staticmethod
+    def pool_output_length(length_in, kernel_size, stride=1, padding=0, dilation=1):
+        return (length_in + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
+
     def __str__(self):
         s = '\nWaveletLSTM'
-        s += f'\n\t Number of directions in LSTM cells {self.directions}'
         s += f'\n\t Number of layers {self.lstm_layers}'
-        s += f'\n\t Hidden/cell sizes {self.hidden_size}'
-        s += f'\n\t {self.channels} channels, of length {self.width}'
+        s += f'\n\t Cell size {self.hidden_size}, hidden size {self.real_hidden_size}'
+        s += f'\n\t {self.channels} channels, of length {self.W}'
         return s
 
     def __init__(self, out_features: int, strands: int, chromosomes: int,
@@ -32,17 +35,13 @@ class WaveletConv1dLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
         self.lstm_layers = layers
-        self.bidirectional, self.directions = False, 1
         self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
-        self.convolutional = True
 
-        self.width = self.W
         self.channels = self.C * self.H
-        self.pool = torch.nn.MaxPool1d(3, stride=2)
 
-        def pool_output_length(length_in, kernel_size, stride=1, padding=0, dilation=1):
-            return (length_in + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
-        self.pooled_width = pool_output_length(self.width, 3, stride=2)
+        # Pooling input layer
+        self.pool = torch.nn.MaxPool1d(3, stride=2)
+        self.pooled_width = self.pool_output_length(self.W, 3, stride=2)
 
         # LSTM
         self.rnn = Conv1dLSTM(input_size=self.channels,
@@ -51,43 +50,34 @@ class WaveletConv1dLSTM(nn.Module):
                               num_layers=self.lstm_layers,
                               proj_size=self.proj_size
                               )
-        # If we use the ConvLSTM, we need to reduce to 1 channel before putting through coeff net.
+
+        # Output layers
+        # Network to reduce to 1 channel before putting through coeff net.
         conv_list = [nn.Conv1d(in_channels=self.W,
                                out_channels=1,
                                kernel_size=3,
                                ) for _ in range(20)]     # todo: create correct number of nets
         self.conv_list = nn.ModuleList(conv_list)
+        # TODO: define the FC output coeff_nets here
 
     def forward(self, x, hidden_state, t):
         """
         x,             [batch size, strands, chromosomes, seq_length]
-        hidden,        [n layers * n directions, batch size, hid dim]
-        cell,          [n layers * n directions, batch size, hid dim]
+        hidden,        [n layers, batch size, hid dim]
+        cell,          [n layers, batch size, hid dim]
         """
         # Determine which dimensions are used as input channels
         x = x.view((x.size(0), self.channels, -1))
         # x = self.pool(x)
 
-        # print(f"len{len(hidden_state)}, type{len(hidden_state[0])}, type({hidden_state[0][0].shape}")
-        output, (h_next, c_next) = self.rnn(x, hidden_state)
-        # output: (N, L, H_out, Signal length)
+        output, (h_next, c_next) = self.rnn(x, hidden_state)        # output: (N, L, H_out, Signal length)
 
-        if self.bidirectional:
-            raise NotImplementedError
-        else:
-            output = output[:, -1, :, :].permute(0, 2, 1)  # Take the last of `temporal` seq
-            latent = self.conv_list[t](output).squeeze(1)
-            coeff = self.coeff_nets[t](latent)
+        output = output[:, -1, :, :].permute(0, 2, 1)               # Take the last of `temporal` seq
+        latent = self.conv_list[t](output).squeeze(1)
+        coeff = self.coeff_nets[t](latent)
 
         return coeff, (h_next, c_next), latent
 
     def init_states(self, batch):
-        hidden = torch.zeros((self.lstm_layers * self.directions,
-                              batch.size(0),
-                              self.real_hidden_size,
-                              self.W), device=device)
-        cell = torch.zeros((self.lstm_layers * self.directions,
-                            batch.size(0),
-                            self.hidden_size,
-                            self.W), device=device)
-        return hidden, cell
+        return (torch.zeros((self.lstm_layers, batch.size(0), self.real_hidden_size, self.W), device=device),
+                torch.zeros((self.lstm_layers, batch.size(0), self.hidden_size, self.W), device=device))

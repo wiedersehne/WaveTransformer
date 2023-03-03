@@ -107,7 +107,6 @@ class Conv1dLSTM(nn.Module):
                  num_layers,
                  bias=True,
                  dropout=0,
-                 bidirectional=0,
                  proj_size=0,
                  ):
 
@@ -115,7 +114,6 @@ class Conv1dLSTM(nn.Module):
 
         # TODO
         assert dropout == 0, NotImplementedError
-        assert bidirectional == 0, NotImplementedError
 
         # self._check_kernel_size_consistency(kernel_size)
 
