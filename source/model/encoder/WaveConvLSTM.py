@@ -41,8 +41,12 @@ class WaveletConv1dLSTM(nn.Module):
         self.channels = self.C * self.H
 
         # Pooling input layer
-        self.pool = torch.nn.MaxPool1d(3, stride=2)
-        self.pooled_width = self.pool_output_length(self.W, 3, stride=2)
+        pool = True
+        if pool:
+            self.pool = torch.nn.MaxPool1d(5, stride=3)
+        else:
+            self.pool = None
+        self.pooled_width = self.pool_output_length(self.W, 5, stride=3) if self.pool is not None else self.W
 
         # LSTM
         self.rnn = Conv1dLSTM(input_size=self.channels,
@@ -63,7 +67,6 @@ class WaveletConv1dLSTM(nn.Module):
         # Connect reduced channel to wavelet coefficient
         self.coeff_nets = [nn.Linear(in_features=self.real_hidden_size, out_features=length, device=device)
                            for length in bank_lengths]
-        self.coeff_nets = nn.ModuleList(conv_list)
 
     def forward(self, x, hidden_state, t):
         """
@@ -88,5 +91,5 @@ class WaveletConv1dLSTM(nn.Module):
         return coeff, (h_next, c_next), latent
 
     def init_states(self, batch):
-        return (torch.zeros((self.lstm_layers, batch.size(0), self.real_hidden_size, self.W), device=device),
-                torch.zeros((self.lstm_layers, batch.size(0), self.hidden_size, self.W), device=device))
+        return (torch.zeros((self.lstm_layers, batch.size(0), self.real_hidden_size, self.pooled_width), device=device),
+                torch.zeros((self.lstm_layers, batch.size(0), self.hidden_size, self.pooled_width), device=device))

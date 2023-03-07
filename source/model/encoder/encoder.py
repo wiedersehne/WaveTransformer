@@ -10,7 +10,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger              # tracking tool
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from source.custom_callbacks.callback_waveLSTM import *
+from source.custom_callbacks.waveLSTM_callbacks import *
 from source.model.encoder.WaveConvLSTM import WaveletConv1dLSTM
 
 import ptwt
@@ -47,6 +47,7 @@ class Encoder(pl.LightningModule, ABC):
                  ):
 
         assert coarse_skip >= 0
+        assert layers == 1 or proj_size == 0, "TODO: update to multiple layers with changes with projection update"
 
         super().__init__()
         self.save_hyperparameters()

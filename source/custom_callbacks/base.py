@@ -40,18 +40,21 @@ class BaseCallback(object):
         # standardise and scale
         z -= z.min(axis=0)
         z /= z.max(axis=0)
-        scaled_metric = 0.3 * (0 + metric * 10) ** 2 if metric is not None else None
+
+        if metric is not None:
+            metric = (((metric - np.min(metric)) / np.max(metric)) * 10) + 5
+            metric *= metric
 
         if sub_labels is not None:
             marker_list = ["o", "$T$", "P", "X"]
             for idx, sub_cls in enumerate(np.unique(sub_labels)):
                 mask = np.ma.getmask(np.ma.masked_equal(sub_labels, sub_cls))
-                sm_mask = scaled_metric[mask] if scaled_metric is not None else None
+                sm_mask = metric[mask] if metric is not None else None
                 sc = ax.scatter(z[mask, 0], z[mask, 1],
                                 c=labels[mask], marker=marker_list[idx], alpha=0.5, s=sm_mask)
         else:
             sc = ax.scatter(z[:, 0], z[:, 1],
-                            c=labels, alpha=0.5,  s=scaled_metric)
+                            c=labels, alpha=0.5,  s=metric)
 
         # Produce a legend for the classes (colors), we only want to show at most ? of them in the legend.
         # if labels is not None:
@@ -113,7 +116,8 @@ class BaseCallback(object):
                     label.set_visible(False)
 
         if pc is not None:
-            self.embedding(ax3, pc, labels=labels, metric=np.mean(truth.reshape((truth.shape[0], -1)), axis=-1))
+            metric = np.mean(truth.reshape((truth.shape[0], -1)), axis=-1)
+            self.embedding(ax3, pc, labels=labels, metric=metric)
             ax3.set_title(f'Latent embedding')
         else:
             sns.heatmap(np.sqrt(np.abs(prediction - truth)), ax=ax3, cmap='Blues', yticklabels=labels)

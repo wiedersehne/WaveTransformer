@@ -54,7 +54,7 @@ def run_ascat_example(project_name):
 
     # Create model
     model, trainer = create_autoencoder(seq_length=90, strands=2, chromosomes=23,
-                                        hidden_size=256, layers=1, proj_size=100,
+                                        hidden_size=256, layers=1, proj_size=0,
                                         coarse_skip=0, recursion_limit=10,
                                         num_epochs=100,
                                         validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
