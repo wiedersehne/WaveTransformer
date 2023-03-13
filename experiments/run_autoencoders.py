@@ -80,7 +80,7 @@ def get_config(project='ascat'):
                 }
     elif project == "sinusoidal":
         return {"batch_size": 64,
-                "classes": 10,
+                "classes": 4,
                 "samples": 2000,
                 "sig_length": 256,
                 "channels": 2,
@@ -90,6 +90,6 @@ def get_config(project='ascat'):
 
 if __name__ == '__main__':
 
-    run_ascat_example("ascat")
-    # run_sinusoidal_example("sinusoidal")
+    # run_ascat_example("ascat")
+    run_sinusoidal_example("sinusoidal")
 

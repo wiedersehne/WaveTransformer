@@ -34,9 +34,7 @@ class ViewEmbedding(Callback, BaseCallback):
 
             fig, (ax, ax_hist) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [9, 1]})
             fig.suptitle(f"Hidden LSTM embedding, layer {level + 1}")
-            self.embedding(ax, _pc, labels=labels, sub_labels=sub_labels,
-                           metric=np.mean(features.reshape((features.shape[0], -1)), axis=-1)   # None
-                           )
+            self.embedding(ax, _pc, labels=labels, metric=np.mean(features.reshape((features.shape[0], -1)), axis=-1))
             ax_hist.barh(np.arange(_ev.shape[0]) + 1, _ev, orientation='horizontal')
             ax_hist.set_xlabel("EV")
             plt.tight_layout()

@@ -54,9 +54,10 @@ def run_ascat_example(project_name):
     print(len(dm.train_set))
 
     # Create model
-    model, trainer = create_classifier(num_classes=len(config["cancer_types"]), seq_length=90, strands=2, chromosomes=23,
+    model, trainer = create_classifier(classes=config["cancer_types"], seq_length=90, strands=2, chromosomes=23,
                                        hidden_size=256, layers=1, proj_size=100,
-                                       coarse_skip=0, recursion_limit=10,
+                                       wavelet='bior4.4',
+                                       coarse_skip=0, recursion_limit=None,
                                        num_epochs=100,
                                        validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                        test_hook_batch=next(iter(dm.test_dataloader())),       # TODO: update to all set
@@ -75,8 +76,8 @@ def run_ascat_example(project_name):
 
 def get_config(project='ascat'):
     if project == 'ascat':
-        return {"batch_size": 128,
-                "cancer_types": ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],
+        return {"batch_size": 256,
+                "cancer_types": ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],  # ['BRCA', 'OV'],  #['STAD', 'COAD'],
                 # "wgd": False,
                 }
     elif project == "sinusoidal":

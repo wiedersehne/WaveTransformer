@@ -2,6 +2,7 @@
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.cm import get_cmap
 import scipy.cluster.hierarchy as hcluster
 
 
@@ -32,7 +33,7 @@ class BaseCallback(object):
         #     assert num_samples < self.test_features.size(0)
 
     @staticmethod
-    def embedding(ax, z, labels=None, sub_labels=None, metric=None):
+    def embedding(ax, z, labels=None, label_name=None, metric=None):
         """
         Plot a latent embedding on axis `ax`.
             Optionally include labels, or a metric tied to each sample
@@ -42,37 +43,22 @@ class BaseCallback(object):
         z /= z.max(axis=0)
 
         if metric is not None:
+            # metric = None
             metric = (((metric - np.min(metric)) / np.max(metric)) * 10) + 5
             metric *= metric
 
-        if sub_labels is not None:
-            marker_list = ["o", "$T$", "P", "X"]
-            for idx, sub_cls in enumerate(np.unique(sub_labels)):
-                mask = np.ma.getmask(np.ma.masked_equal(sub_labels, sub_cls))
-                sm_mask = metric[mask] if metric is not None else None
-                sc = ax.scatter(z[mask, 0], z[mask, 1],
-                                c=labels[mask], marker=marker_list[idx], alpha=0.5, s=sm_mask)
-        else:
-            sc = ax.scatter(z[:, 0], z[:, 1],
-                            c=labels, alpha=0.5,  s=metric)
+        cmap = get_cmap("tab10")
+        sc = ax.scatter(z[:, 0], z[:, 1], c=labels, s=metric, alpha=0.5, edgecolors='none', cmap=cmap)
 
-        # Produce a legend for the classes (colors), we only want to show at most ? of them in the legend.
-        # if labels is not None:
-        #     kw = dict(num=len(np.unique(labels)))
-        #     legend1 = ax.legend(*sc.legend_elements(**kw),
-        #                         loc="upper left", title="Class", ncol=2,
-        #                         bbox_to_anchor=(0.05, 1.15), fancybox=True, shadow=True,
-        #                         )
-        #     ax.add_artist(legend1)
+        # produce a legend with the unique colors from the scatter
+        legend1 = ax.legend(*sc.legend_elements(), loc="lower left", title="Classes")
+        ax.add_artist(legend1)
 
-        # Produce a legend for the metric (sizes), we only want to show at most 4 of them in the legend.
         # if metric is not None:
-        #     kw = dict(prop="sizes", num=4, color=sc.cmap(0.7), fmt="{x:.1f}",
-        #               func=lambda _s: (np.sqrt(_s / .3) - 5) / 10)
-        #     legend2 = ax.legend(*sc.legend_elements(**kw),
-        #                         loc="upper right", title="Count", ncol=2,
-        #                         bbox_to_anchor=(0.95, 1.15), fancybox=True, shadow=True,
-        #                         )
+        #     # produce a legend with a cross section of sizes from the scatter
+        #     handles, labels = sc.legend_elements(prop="sizes", alpha=0.6)
+        #     print(handles, labels)
+        #     legend2 = ax.legend(handles, labels, loc="upper right", title="Sizes")
 
         ax.set_xlabel("Principal component $1$")
         ax.set_ylabel("Principal component $2$")

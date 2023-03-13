@@ -76,7 +76,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         meta_results["attention"] = alphas                             # A in Bengio paper
         meta_results["M"] = output
 
-        output = output.view(output.size(0), -1)                       # [batch_size * attention-hops, n_hidden]
+        output = output.view(output.size(0), -1)                       # [batch_size, attention-hops * n_hidden]
         fc = self.tanh(self.fc_clf(self.drop(output)))
         pred = self.pred_clf(self.drop(fc))
 
@@ -144,7 +144,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         }
 
 
-def create_classifier(num_classes, seq_length, strands, chromosomes,
+def create_classifier(classes, seq_length, strands, chromosomes,
                       hidden_size=256, layers=1, proj_size=0,
                       wavelet='haar',
                       coarse_skip=0,
@@ -166,10 +166,10 @@ def create_classifier(num_classes, seq_length, strands, chromosomes,
                       }
     config = {"dropout": 0.5,
               "attention-unit": 350,
-              "attention-hops": 1,
-              "penalization_coeff": 0,
-              "nfc": 512,                         # hidden layer size for MLP in the classifier
-              "class-number": num_classes,        # number of class for the last step of classification
+              "attention-hops": 10 if recursion_limit is None else recursion_limit,
+              "penalization_coeff": 0.,
+              "nfc": 128,                         # hidden layer size for MLP in the classifier
+              "class-number": len(classes),       # number of class for the last step of classification
               "real_hidden_size": proj_size if proj_size > 0 else hidden_size,       # Encoder's hidden size
               }
 
@@ -194,7 +194,7 @@ def create_classifier(num_classes, seq_length, strands, chromosomes,
     early_stop_callback = EarlyStopping(
         monitor="val_clf_loss", mode="min",
         min_delta=0,
-        patience=3,
+        patience=5,
         verbose=verbose
     )
 
@@ -210,7 +210,8 @@ def create_classifier(num_classes, seq_length, strands, chromosomes,
 
     viz_attention_1 = MultiScaleEmbedding(
         val_samples=validation_hook_batch,
-        test_samples=test_hook_batch
+        test_samples=test_hook_batch,
+        class_labels=classes
     )
 
     callbacks = [checkpoint_callback,
