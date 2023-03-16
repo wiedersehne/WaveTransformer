@@ -22,7 +22,7 @@ def run_sinusoidal_example(project_name):
     print(dm)
 
     # Create model
-    model, trainer = create_classifier(num_classes=config['classes'],
+    model, trainer = create_classifier(classes=[f"Class {i}" for i in range(config['classes'])],
                                        seq_length=config["sig_length"], strands=config["channels"], chromosomes=1,
                                        hidden_size=128, layers=1, proj_size=30,
                                        wavelet='bior4.4',
@@ -77,7 +77,7 @@ def run_ascat_example(project_name):
 def get_config(project='ascat'):
     if project == 'ascat':
         return {"batch_size": 256,
-                "cancer_types": ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],  # ['BRCA', 'OV'],  #['STAD', 'COAD'],
+                "cancer_types": ['BRCA', 'OV']  # ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],  # ,  #['STAD', 'COAD'],
                 # "wgd": False,
                 }
     elif project == "sinusoidal":
@@ -92,6 +92,6 @@ def get_config(project='ascat'):
 
 if __name__ == '__main__':
 
-    run_ascat_example("ascat")
-    # run_sinusoidal_example("sinusoidal")
+    # run_ascat_example("ascat")
+    run_sinusoidal_example("sinusoidal")
 

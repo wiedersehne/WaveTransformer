@@ -8,32 +8,16 @@ import scipy.cluster.hierarchy as hcluster
 
 class BaseCallback(object):
 
-    def __init__(self, val_samples=None, test_samples=None, num_samples=8):
+    def __init__(self, val_samples=None, test_samples=None, label_dict=None):
         self.val_features = val_samples['feature'] if val_samples is not None else None
         self.val_labels = val_samples['label'] if val_samples is not None else None
-        if val_samples is not None:
-            self.val_sub_labels = val_samples['sub_label'] if "sub_label" in val_samples.keys() else None
-        else:
-            self.val_sub_labels = None
 
         self.test_features = test_samples['feature'] if test_samples is not None else None
         self.test_labels = test_samples['label'] if test_samples is not None else None
-        if test_samples is not None:
-            self.test_sub_labels = test_samples['sub_label'] if "sub_label" in test_samples.keys() else None
-        else:
-            self.test_sub_labels = None
 
-        # # TODO: when updating to full val/test set, seed + sub-sample num_samples - ATM this is redundant and we just
-        # # TODO: and make so None leads to no sub-batching
-        # # apply callback to the batch
-        # self.num_samples = num_samples
-        # if val_samples is not None:
-        #     assert num_samples < self.val_features.size(0)
-        # if test_samples is not None:
-        #     assert num_samples < self.test_features.size(0)
+        self.label_dict = label_dict
 
-    @staticmethod
-    def embedding(ax, z, labels=None, label_name=None, metric=None):
+    def embedding(self, ax, z, labels, metric=None):
         """
         Plot a latent embedding on axis `ax`.
             Optionally include labels, or a metric tied to each sample
@@ -41,18 +25,24 @@ class BaseCallback(object):
         # standardise and scale
         z -= z.min(axis=0)
         z /= z.max(axis=0)
-
         if metric is not None:
-            # metric = None
-            metric = (((metric - np.min(metric)) / np.max(metric)) * 10) + 5
-            metric *= metric
+            metric = (((metric - np.min(metric)) / np.max(metric)) * 20) + 5
+            # metric *= metric
 
-        cmap = get_cmap("tab10")
-        sc = ax.scatter(z[:, 0], z[:, 1], c=labels, s=metric, alpha=0.5, edgecolors='none', cmap=cmap)
+        col_iterator = iter(get_cmap("tab10").colors)
+        for lbl in np.unique(labels):
+            mask = np.ma.getmask(np.ma.masked_equal(labels, lbl))
+            color = next(col_iterator)
+            c = self.label_dict[lbl] if self.label_dict is not None else lbl
+            ax.scatter(z[mask, 0], z[mask, 1], c=np.array([color]), s=metric[mask], label=c,
+                       alpha=0.5, edgecolors='none')
 
-        # produce a legend with the unique colors from the scatter
-        legend1 = ax.legend(*sc.legend_elements(), loc="lower left", title="Classes")
-        ax.add_artist(legend1)
+        ax.legend()
+        # print(*sc.legend_elements())
+
+        # # produce a legend with the unique colors from the scatter
+        # legend1 = ax.legend(*sc.legend_elements(), loc="lower left", title="Classes")
+        # ax.add_artist(legend1)
 
         # if metric is not None:
         #     # produce a legend with a cross section of sizes from the scatter

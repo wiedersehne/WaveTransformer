@@ -43,10 +43,11 @@ class WaveletConv1dLSTM(nn.Module):
         # Pooling input layer
         pool = True
         if pool:
-            self.pool = torch.nn.MaxPool1d(5, stride=3)
+            self.pool = torch.nn.AvgPool1d(5, stride=3)
+            self.pooled_width = self.pool_output_length(self.W, 5, stride=3)
         else:
             self.pool = None
-        self.pooled_width = self.pool_output_length(self.W, 5, stride=3) if self.pool is not None else self.W
+            self.pooled_width = self.W
 
         # LSTM
         self.rnn = Conv1dLSTM(input_size=self.channels,

@@ -17,7 +17,7 @@ import ptwt
 import pywt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+torch.cuda.reset_max_memory_allocated(device)
 
 class Encoder(pl.LightningModule, ABC):
 
@@ -225,11 +225,17 @@ def create_autoencoder(seq_length, strands, chromosomes,
         test_samples=test_hook_batch
     )
 
+    save_output = SaveOutput(
+        test_samples=test_hook_batch,
+        file_path="/home/ubuntu/Documents/GitHub/WaveletVAE/figs_and_demos/output.pkl"
+    )
+
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_prediction_callback,
                  viz_rnn_callback,
-                 viz_embedding_callback
+                 viz_embedding_callback,
+                 save_output
                  ]
 
     _trainer = pl.Trainer(

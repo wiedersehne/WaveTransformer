@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from source.custom_callbacks.waveLSTM_callbacks import *
-from source.custom_callbacks.atn_callbacks import *
+from source.custom_callbacks.clf_callbacks import *
 from source.model.encoder.encoder import Encoder
 
 
@@ -39,7 +39,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
 
         # Classifier
         self.fc_clf = nn.Linear(config['real_hidden_size'] * config['attention-hops'], config['nfc'])
-        self.pred_clf = nn.Linear(config['nfc'], config['class-number'])
+        self.pred_clf = nn.Linear(config['nfc'], len(config['classes']))
         self.criterion = nn.CrossEntropyLoss()
 
     def init_weights(self, init_range=0.1):
@@ -169,9 +169,11 @@ def create_classifier(classes, seq_length, strands, chromosomes,
               "attention-hops": 10 if recursion_limit is None else recursion_limit,
               "penalization_coeff": 0.,
               "nfc": 128,                         # hidden layer size for MLP in the classifier
-              "class-number": len(classes),       # number of class for the last step of classification
+              "classes": classes,                 # number of class for the last step of classification
               "real_hidden_size": proj_size if proj_size > 0 else hidden_size,       # Encoder's hidden size
               }
+
+    label_dictionary = {key: val for key, val in zip([i for i in range(len(classes))], classes)}
 
     _model = SelfAttentiveEncoder(encoder_config=encoder_config, config=config)
     print(_model)
@@ -200,25 +202,32 @@ def create_classifier(classes, seq_length, strands, chromosomes,
 
     viz_embedding_callback = ViewEmbedding(
         val_samples=validation_hook_batch,
-        test_samples=test_hook_batch
+        test_samples=test_hook_batch,
+        label_dictionary=label_dictionary
     )
 
     viz_rnn_callback = ViewRecurrentSignal(
         val_samples=validation_hook_batch,
-        test_samples=test_hook_batch
+        test_samples=test_hook_batch,
+        label_dictionary=label_dictionary
     )
 
-    viz_attention_1 = MultiScaleEmbedding(
+    viz_attention_1 = ClfMultiScaleEmbedding(
         val_samples=validation_hook_batch,
         test_samples=test_hook_batch,
-        class_labels=classes
+        label_dictionary=label_dictionary
+    )
+
+    save_output = SaveOutput(
+        test_samples=test_hook_batch,
     )
 
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_rnn_callback,
                  viz_embedding_callback,
-                 viz_attention_1
+                 viz_attention_1,
+                 save_output
                  ]
 
     _trainer = pl.Trainer(
