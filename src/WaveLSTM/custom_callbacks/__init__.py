@@ -1,6 +1,5 @@
 # Auto-encoder specific callbacks
-# from ar_callbacks import
-from .ar_callbacks import ViewRecurrentSignal
+from .ae_callbacks import ViewRecurrentSignal
 
 # Self-attention callbacks
 

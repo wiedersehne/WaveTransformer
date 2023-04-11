@@ -43,10 +43,10 @@ class Conv1dLSTMCell(nn.Module):
                               bias=self.bias)
         self.conv_proj = nn.Sequential(
             nn.Conv1d(in_channels=self.hidden_size,
-                                   out_channels=self.real_hidden_size,
-                                   kernel_size=self.kernel_size,
-                                   padding=self.padding,
-                                   bias=self.bias),
+                      out_channels=self.real_hidden_size,
+                      kernel_size=self.kernel_size,
+                      padding=self.padding,
+                      bias=self.bias),
             nn.Tanh())
 
     def forward(self, input_tensor, state):
@@ -55,10 +55,11 @@ class Conv1dLSTMCell(nn.Module):
         """
         hidden, cell = state                                 # (N, hidden_size, width)
 
+        # print(f"xx: {input_tensor.shape}, {hidden.shape}")
         combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
         combined_conv = self.conv(combined)                  # (N, 4 * hidden_size, width)
-
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_size, dim=1)  # (N, hidden_size, width)
+
         i = torch.sigmoid(cc_i)
         f = torch.sigmoid(cc_f)
         o = torch.sigmoid(cc_o)
@@ -69,6 +70,9 @@ class Conv1dLSTMCell(nn.Module):
 
         if self.proj_size > 0:
             h_next = self.conv_proj(h_next)                       # (N, proj_size, width)
+
+        # print(f"{input_tensor.shape}, {hidden.shape}, {h_next.shape}")
+
 
         return h_next, c_next
 
@@ -116,6 +120,7 @@ class Conv1dLSTM(nn.Module):
 
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
+        self.real_hidden_channels = hidden_channels if proj_size == 0 else proj_size
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         self.bias = bias
@@ -123,22 +128,12 @@ class Conv1dLSTM(nn.Module):
         cell_list = []
         hidden_to_input_list = []
         for i in range(self.num_layers):
-            cell_list.append(Conv1dLSTMCell(input_channels=self.input_channels,
+            cell_list.append(Conv1dLSTMCell(input_channels=self.input_channels if i == 0 else self.real_hidden_channels,
                                             hidden_size=self.hidden_channels,
                                             kernel_size=self.kernel_size,
                                             bias=self.bias,
                                             proj_size=proj_size))
-            hidden_to_input_list.append(nn.Sequential(
-                nn.Dropout(p=dropout),
-                nn.Conv1d(in_channels=self.hidden_channels if proj_size == 0 else proj_size,
-                          out_channels=self.input_channels,
-                          kernel_size=self.kernel_size,
-                          padding=self.kernel_size // 2
-                          )
-            ))
-
         self.cell_list = nn.ModuleList(cell_list)
-        self.Widot_list = nn.ModuleList(hidden_to_input_list)
 
     def forward(self, input_tensor, hidden_state):
         """
@@ -175,7 +170,8 @@ class Conv1dLSTM(nn.Module):
             hidden_last, cell_last = [], []
             for layer_idx in range(self.num_layers):
                 h_next, c_next = self.cell_list[layer_idx](input_tensor=xt, state=[hidden[layer_idx], cell[layer_idx]])
-                xt = self.Widot_list[layer_idx](h_next)
+                xt = h_next
+
                 hidden_last.append(h_next)
                 cell_last.append(c_next)
             hidden, cell = hidden_last, cell_last          # (num_layers, N, H_out, Signal length)

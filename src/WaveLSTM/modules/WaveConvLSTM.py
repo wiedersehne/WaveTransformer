@@ -21,6 +21,7 @@ class WaveletConv1dLSTM(nn.Module):
                  hidden_size,
                  layers: int = 1,
                  proj_size: int = 0,
+                 scale_embed_dim: int = 128
                  ):
         """
         out_features,  number of loci
@@ -36,6 +37,7 @@ class WaveletConv1dLSTM(nn.Module):
         self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
         self.lstm_layers = layers
         self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
+        self.embed_dim = scale_embed_dim
 
         self.channels = self.C * self.H
         self.masked_input_width = masked_input_width
@@ -52,7 +54,7 @@ class WaveletConv1dLSTM(nn.Module):
         #  to map to the embedded space
         conv_list = [nn.Sequential(
             nn.Flatten(),
-            nn.LazyLinear(out_features=128),
+            nn.LazyLinear(out_features=self.embed_dim),
         )
             for _ in range(J)]
         self.conv_list = nn.ModuleList(conv_list)
