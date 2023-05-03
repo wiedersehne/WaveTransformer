@@ -1,2 +1,2 @@
 from .autoencoder import create_autoencoder
-from .classification import create_classifier
+from .classifier import create_classifier

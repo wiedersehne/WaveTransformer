@@ -241,3 +241,5 @@ cython_debug/
 /experiments/experiments
 /experiments/wandb
 /data
+!/experiments/low
+!/experiments/tst_model

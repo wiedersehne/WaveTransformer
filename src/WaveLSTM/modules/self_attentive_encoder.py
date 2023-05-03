@@ -1,25 +1,20 @@
 from abc import ABC
-# Torch
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-# PyTorch-lightning
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger              # tracking tool
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-
-from WaveLSTM.custom_callbacks import clf_callbacks
-from WaveLSTM.custom_callbacks import waveLSTM_callbacks
 from WaveLSTM.modules.encoder import Encoder
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 class SelfAttentiveEncoder(pl.LightningModule, ABC):
+    """
+    A class which wraps the wave-LSTM encoder in the self-attention mechanism of Bengio et al
 
+    Refs: Bengio: https://arxiv.org/abs/1703.03130
+          https://github.com/ExplorerFreda/Structured-Self-Attentive-Sentence-Embedding/blob/master/models.py
+
+    """
     def __init__(self,
                  encoder_config,
                  config,
@@ -32,7 +27,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         self.drop = nn.Dropout(config['dropout'])
         self.ws1 = nn.LazyLinear(config['attention-unit'], bias=False)
         self.ws2 = nn.Linear(config['attention-unit'], config['attention-hops'], bias=False)
-        self.init_weights(init_range=0.1)
+        # self.init_weights(init_range=0.1)
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
         self.attention_hops = config['attention-hops']
@@ -62,17 +57,15 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
 
         compressed_embeddings = hidden.view(-1, size[2])
 
-        hbar = self.tanh(self.ws1(compressed_embeddings))              # [batch_size, num_multiscales, attention-unit]
+        hbar = self.tanh(self.ws1(self.drop(compressed_embeddings)))              # [batch_size, num_multiscales, attention-unit]
         alphas = self.ws2(hbar).view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention-hops]
         alphas = torch.transpose(alphas, 1, 2).contiguous()            # [batch_size, attention-hops, num_multiscales]
 
         alphas = self.softmax(alphas.view(-1, size[1]))                # [batch_size * attention-hops, num_multiscales]
         alphas = alphas.view(size[0], self.attention_hops, size[1])    # [batch_size, attention-hops, num_multiscales]
+        meta_results.update({"attention": alphas})                     # A in Bengio's self-attention paper
 
         # M in Bengio's paper
         output = torch.bmm(alphas, hidden)                             # [batch_size, attention-hops, n_hidden]
-
-        meta_results.update({"attention": alphas,                      # A in Bengio's self-attention paper
-                             })
 
         return output, meta_results

@@ -23,6 +23,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class AutoEncoder(pl.LightningModule, ABC):
 
+    # def standardise(self, x):
+    #     assert x.dim() == 4
+    #     if self.norm_stats is not None:
+    #         x -= self.norm_stats[0]
+    #     return x
+
     def masked_loss(self, x):
         """
         Get the masked target sequence by reconstructing wavelet coefficients with the highest resolutions masked
@@ -47,13 +53,16 @@ class AutoEncoder(pl.LightningModule, ABC):
     def __init__(self, seq_length, strands, chromosomes,
                  hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128,
                  wavelet="haar",
-                 recursion_limit=None,):
+                 recursion_limit=None,
+                 # norm_stats=None
+                 ):
 
         super().__init__()
         self.save_hyperparameters()
         self.wavelet = pywt.Wavelet(wavelet)
         self.chromosomes = chromosomes
         self.strands = strands
+        # self.norm_stats = (norm_stats[0].to(device), norm_stats[1].to(device))
 
         # Encoder
         self.encoder = Encoder(seq_length=seq_length, strands=strands, chromosomes=chromosomes,
@@ -68,7 +77,8 @@ class AutoEncoder(pl.LightningModule, ABC):
                                                self.wavelet,
                                                level=self.encoder.max_level)]
         #    Connect scale embeddings to wavelet coefficient
-        coeff_nets = [nn.Sequential(nn.ReLU(), nn.LazyLinear(out_features=length * strands * chromosomes, device=device)
+        coeff_nets = [nn.Sequential(nn.ReLU(),
+                                    nn.LazyLinear(out_features=length * strands * chromosomes, device=device)
                                     )
                       for length in self.decoder_bank_lengths[:self.encoder.recursion_limit]]
         self.coeff_nets = nn.ModuleList(coeff_nets)
@@ -83,38 +93,41 @@ class AutoEncoder(pl.LightningModule, ABC):
         meta_data.update({'hidden': resolution_embeddings})
 
         # Decode
-        predicted_bank = [torch.zeros((x.size(0), x.size(1), x.size(2), length), device=device)
-                          for length in self.decoder_bank_lengths]
-        autoencoder_outputs = []
-
+        filter_bank = [torch.zeros((x.size(0), x.size(1), x.size(2), length), device=device)
+                       for length in self.decoder_bank_lengths]
+        r_masked_predictions = []
         for j, scale_embed in enumerate(resolution_embeddings):
-            # Auto-encoder
-            predicted_bank[j] = self.coeff_nets[j](scale_embed).reshape(x.size(0), x.size(1), x.size(2), -1)
-            partly_recon = torch.zeros(x.shape, device=device)
+            # Predict coefficient
+            filter_bank[j] = self.coeff_nets[j](scale_embed).reshape(x.size(0), x.size(1), x.size(2), -1)
+            # Memory-alloc for reconstructions
+            r_partly_recon = torch.zeros(x.shape, device=device)
+            # Channelised reconstruction
             for strand in range(self.strands):
                 for chrom in range(self.chromosomes):
-                    pred_bank_channel = [coeff[:, strand, chrom, :] for coeff in predicted_bank]
-                    partly_recon[:, strand, chrom, :] = ptwt.waverec(pred_bank_channel, self.wavelet)
+                    # Right-masked (IWT(alpha_1, ... alpha_j, 0,0...)
+                    r_pred_bank_channel = [coeff[:, strand, chrom, :] for coeff in filter_bank]
+                    r_partly_recon[:, strand, chrom, :] = ptwt.waverec(r_pred_bank_channel, self.wavelet)
 
             # Record next output for target sequence
-            autoencoder_outputs.append(partly_recon)
+            r_masked_predictions.append(r_partly_recon)
 
-        meta_data.update({'filter_bank': predicted_bank,
-                          'autoencoder_output': autoencoder_outputs,
-                          'masked_target': self.masked_loss(x),
+        meta_data.update({'filter_bank': filter_bank,
+                          'r_masked_prediction': r_masked_predictions,
+                          'r_masked_target': self.masked_loss(x),
                           })
 
-        return partly_recon, meta_data
+        return r_partly_recon, meta_data
 
     def loss_function(self, x, x_recon, meta_data, filter_noise=True) -> dict:
         if filter_noise:
-            x = meta_data["masked_target"][-1]
+            x = meta_data["r_masked_target"][-1]
         x = torch.flatten(x, start_dim=1)
         x_recon = torch.flatten(x_recon, start_dim=1)
         return {'loss': F.mse_loss(x, x_recon)}
 
     def training_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
+        # sequences = self.standardise(sequences)
         recon, meta_results = self(sequences)
         train_loss_dict = self.loss_function(sequences, recon, meta_results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
@@ -122,6 +135,7 @@ class AutoEncoder(pl.LightningModule, ABC):
 
     def validation_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
+        # sequences = self.standardise(sequences)
         recon, meta_results = self(sequences)
         val_loss_dict = self.loss_function(sequences, recon, meta_results)
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
@@ -129,6 +143,7 @@ class AutoEncoder(pl.LightningModule, ABC):
 
     def test_step(self, batch, batch_idx):
         sequences, labels = batch['feature'], batch['label']
+        # sequences = self.standardise(sequences)
         recon, meta_results = self(sequences)
         test_loss_dict = self.loss_function(sequences, recon, meta_results)
         self.log("test_loss", test_loss_dict['loss'], prog_bar=True, logger=True)
@@ -156,11 +171,13 @@ def create_autoencoder(seq_length, strands, chromosomes,
                        dir_path="configs/logs", verbose=False,  monitor="val_loss", mode="min",
                        num_epochs=20, gpus=1,
                        validation_hook_batch=None, test_hook_batch=None,
-                       project='WaveLSTM-autoencoder', run_id="null"):
+                       project='WaveLSTM-autoencoder', run_id="null",
+                       # norm_stats=None
+                       ):
 
     _model = AutoEncoder(seq_length, strands, chromosomes,
                          hidden_size=hidden_size, layers=layers, proj_size=proj_size, scale_embed_dim=scale_embed_dim,
-                         wavelet=wavelet, recursion_limit=recursion_limit,
+                         wavelet=wavelet, recursion_limit=recursion_limit,# norm_stats=norm_stats
                          )
     print(_model)
 
@@ -180,7 +197,7 @@ def create_autoencoder(seq_length, strands, chromosomes,
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
-        min_delta=0.01,
+        min_delta=0.0,
         patience=5,
         verbose=verbose
     )

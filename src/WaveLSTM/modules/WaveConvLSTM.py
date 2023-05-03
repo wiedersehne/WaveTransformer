@@ -21,7 +21,8 @@ class WaveletConv1dLSTM(nn.Module):
                  hidden_size,
                  layers: int = 1,
                  proj_size: int = 0,
-                 scale_embed_dim: int = 128
+                 scale_embed_dim: int = 128,
+                 dropout=0.5
                  ):
         """
         out_features,  number of loci
@@ -31,7 +32,7 @@ class WaveletConv1dLSTM(nn.Module):
         n_layers,      the number of LSTM layers
         """
         super().__init__()
-        self.permute = False
+        # self.permute = False
         self.proj_size = proj_size
         self.hidden_size = hidden_size
         self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
@@ -47,11 +48,11 @@ class WaveletConv1dLSTM(nn.Module):
                               hidden_channels=self.hidden_size,
                               kernel_size=3,
                               num_layers=self.lstm_layers,
-                              proj_size=self.proj_size
+                              proj_size=self.proj_size,
+                              dropout=dropout
                               )
 
-        # Output layers
-        #  to map to the embedded space
+        # Output layers to map to the embedded space
         conv_list = [nn.Sequential(
             nn.Flatten(),
             nn.LazyLinear(out_features=self.embed_dim),
@@ -73,8 +74,8 @@ class WaveletConv1dLSTM(nn.Module):
 
         # Output layer
         output = output[:, -1, :, :]                                # Take the last of `temporal` seq
-        if self.permute:
-            output = output.permute(0, 2, 1)
+        # if self.permute:
+        #     output = output.permute(0, 2, 1)
         scale_embedding = self.conv_list[t](output)           #.squeeze(1)
 
         return scale_embedding, (h_next, c_next)

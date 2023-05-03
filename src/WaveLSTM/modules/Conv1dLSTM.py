@@ -2,6 +2,8 @@
 import torch.nn as nn
 import torch
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class Conv1dLSTMCell(nn.Module):
 
@@ -9,7 +11,8 @@ class Conv1dLSTMCell(nn.Module):
                  hidden_size: int = 128,
                  kernel_size: int = 3,
                  bias: bool = True,
-                 proj_size: int = 0):
+                 proj_size: int = 0,
+                 dropout: float = 0.):
         """
         Initialize ConvLSTM cell.
 
@@ -36,24 +39,28 @@ class Conv1dLSTMCell(nn.Module):
         self.padding = kernel_size // 2
         self.bias = bias
 
+        self.drop = nn.Dropout(dropout)
         self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_size,
                               out_channels=4 * self.hidden_size,
                               kernel_size=self.kernel_size,
                               padding=self.padding,
                               bias=self.bias)
-        self.conv_proj = nn.Sequential(
-            nn.Conv1d(in_channels=self.hidden_size,
-                      out_channels=self.real_hidden_size,
-                      kernel_size=self.kernel_size,
-                      padding=self.padding,
-                      bias=self.bias),
-            nn.Tanh())
+        if self.proj_size > 0:
+            self.conv_proj = nn.Sequential(
+                nn.Conv1d(in_channels=self.hidden_size,
+                          out_channels=self.real_hidden_size,
+                          kernel_size=self.kernel_size,
+                          padding=self.padding,
+                          bias=self.bias),
+                nn.Tanh())
+
 
     def forward(self, input_tensor, state):
         """
         input_tensor: (N, Channels, Width)
         """
         hidden, cell = state                                 # (N, hidden_size, width)
+        input_tensor = self.drop(input_tensor)
 
         # print(f"xx: {input_tensor.shape}, {hidden.shape}")
         combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
@@ -70,9 +77,6 @@ class Conv1dLSTMCell(nn.Module):
 
         if self.proj_size > 0:
             h_next = self.conv_proj(h_next)                       # (N, proj_size, width)
-
-        # print(f"{input_tensor.shape}, {hidden.shape}, {h_next.shape}")
-
 
         return h_next, c_next
 
@@ -132,7 +136,8 @@ class Conv1dLSTM(nn.Module):
                                             hidden_size=self.hidden_channels,
                                             kernel_size=self.kernel_size,
                                             bias=self.bias,
-                                            proj_size=proj_size))
+                                            proj_size=proj_size,
+                                            dropout=0.0 if i == 0 else dropout))
         self.cell_list = nn.ModuleList(cell_list)
 
     def forward(self, input_tensor, hidden_state):

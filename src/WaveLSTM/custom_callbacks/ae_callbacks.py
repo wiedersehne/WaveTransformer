@@ -22,9 +22,11 @@ class ViewRecurrentSignal(Callback, BaseCallback):
         _, meta_result = _pl_module(features)
         features = np.asarray(features.detach().cpu())
 
-        masked_recons = [np.asarray(x.detach().cpu()) for x in meta_result['autoencoder_output']]
+        # IWT(0,...,alpha_j, 0....)
         masked_inputs = [np.asarray(x.detach().cpu()) for x in meta_result['masked_inputs']]
-        masked_targets = [np.asarray(x.detach().cpu()) for x in meta_result['masked_target']]
+        # IWT(alpha_1,...,alpha_j, 0....)
+        r_masked_targets = [np.asarray(x.detach().cpu()) for x in meta_result['r_masked_target']]
+        r_masked_recons = [np.asarray(x.detach().cpu()) for x in meta_result['r_masked_prediction']]
         labels = np.asarray(labels.detach().cpu(), dtype=np.int)
 
         recurrent_proj_hidden = []
@@ -39,13 +41,13 @@ class ViewRecurrentSignal(Callback, BaseCallback):
 
 
         _trainer.logger.experiment.log({
-            log_name:
-                [wandb.Image(self.heatmap(masked_recons[depth].reshape(features.shape[0], -1),
-                                          masked_targets[depth].reshape(features.shape[0], -1),
+            log_name + "-right":
+                [wandb.Image(self.heatmap(r_masked_recons[j].reshape(features.shape[0], -1),
+                                          r_masked_targets[j].reshape(features.shape[0], -1),
                                           labels,
-                                          recurrent_proj_hidden[depth],
-                                          title=f"Depth index {depth}"))
-                 for depth in range(len(masked_recons))]
+                                          recurrent_proj_hidden[j],
+                                          title=f"Right-masked, j={j}"))
+                 for j in range(len(r_masked_recons))]
         })
         plt.close('all')
 

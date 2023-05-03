@@ -3,7 +3,7 @@ import TCGA
 from SignalTransformData.data_modules.simulated import SinusoidalDataModule
 from configs.demo_config import get_demo_config
 
-from WaveLSTM.models.classification import create_classifier
+from WaveLSTM.models.classifier import create_classifier
 
 
 # TODO: make a proper configuration (.yaml or whatever)
@@ -39,15 +39,15 @@ def run_sinusoidal_example():
 
 def run_ascat_example():
 
-    cancer_types = ['BRCA', 'OV']  # ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG'],  # ,  #['STAD', 'COAD'],
+    cancer_types = ['OV', 'GBM', 'KIRC', 'HNSC', 'LGG']  # ,  #['STAD', 'COAD'],  ['BRCA', 'OV']
 
     # Load data and filter for only the cases of interest
-    dm = TCGA.data_modules.ascat.ASCATDataModule(batch_size=256, cancer_types=cancer_types)
+    dm = TCGA.data_modules.ascat.loaders.ASCATDataModule(batch_size=256, cancer_types=cancer_types)
     print(dm)
 
     # Create model
     model, trainer = create_classifier(classes=cancer_types, seq_length=dm.W, strands=2, chromosomes=23,
-                                       hidden_size=128, layers=1, proj_size=0,
+                                       hidden_size=32, layers=1, proj_size=0, scale_embed_dim=128,
                                        recursion_limit=5,
                                        validation_hook_batch=next(iter(dm.val_dataloader())),  # TODO: update to all set
                                        test_hook_batch=next(iter(dm.test_dataloader())),       # TODO: update to all set
@@ -66,6 +66,6 @@ def run_ascat_example():
 
 if __name__ == '__main__':
 
-    # run_ascat_example()
-    run_sinusoidal_example()
+    run_ascat_example()
+    # run_sinusoidal_example()
 

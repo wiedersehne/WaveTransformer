@@ -34,8 +34,8 @@ class BaseCallback(object):
             mask = np.ma.getmask(np.ma.masked_equal(labels, lbl))
             color = next(col_iterator)
             c = self.label_dict[lbl] if self.label_dict is not None else lbl
-            ax.scatter(z[mask, 0], z[mask, 1], c=np.array([color]), s=metric[mask], label=c,
-                       alpha=0.5, edgecolors='none')
+            ax.scatter(z[mask, 0], z[mask, 1], c=np.array([color]), s=metric[mask] if metric is not None else None,
+                       label=c, alpha=0.5, edgecolors='none')
 
         ax.legend()
         # print(*sc.legend_elements())
@@ -55,7 +55,7 @@ class BaseCallback(object):
 
         return ax
 
-    def heatmap(self, prediction, truth, labels, pc=None, title=""):
+    def heatmap(self, prediction, truth, labels, pc=None, scale=False, title=""):
         """
         Create a subfigure of truth, prediction.
             Options: if pc is None then in 3rd figure we plot the root absolute error, else we plot the pc and order by
@@ -92,7 +92,7 @@ class BaseCallback(object):
                     label.set_visible(False)
 
         if pc is not None:
-            metric = np.mean(truth.reshape((truth.shape[0], -1)), axis=-1)
+            metric = np.mean(truth.reshape((truth.shape[0], -1)), axis=-1) if scale else None
             self.embedding(ax3, pc, labels=labels, metric=metric)
             ax3.set_title(f'Latent embedding')
         else:

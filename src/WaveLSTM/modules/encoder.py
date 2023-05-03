@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 import numpy as np
 import ptwt
 import pywt
+from torch import nn
 from WaveLSTM.modules.WaveConvLSTM import WaveletConv1dLSTM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,6 +59,15 @@ class Encoder(pl.LightningModule, ABC):
                                                 self.wavelet, mode='zero',
                                                 level=self.max_level)[self.recursion_limit - 1].shape[1] * 2
 
+        # batch norm
+        # batch_norms = [nn.Sequential(
+        #     nn.Flatten(),
+        #     nn.BatchNorm1d(self.masked_input_width * strands * chromosomes),
+        #     nn.Unflatten(1, (self.masked_input_width, strands, chromosomes)),
+        # )
+        #     for _ in range(self.recursion_limit)]
+        # self.batch_norms = nn.ModuleList(batch_norms)
+
         # recurrent network
         self.wave_rnn = WaveletConv1dLSTM(out_features=seq_length, strands=strands, chromosomes=chromosomes,
                                           masked_input_width=self.masked_input_width,
@@ -84,13 +94,18 @@ class Encoder(pl.LightningModule, ABC):
         """
         assert x.dim() == 4
 
-        # Partial fidelity truth, removing (zeroing) the contribution of coefficients further down the recurrence
+        # Source-separated input
         masked_inputs = self.masked_input(x)
 
-        hidden_state = self.wave_rnn.init_states(x)                      # Initialise hidden and cell states
+        # Initialise hidden and cell states
+        hidden_state = self.wave_rnn.init_states(x)
+
+        # Loop over multiscales
         hidden_embedding = []
         for j in range(self.recursion_limit):
-            scale_embedding, hidden_state = self.wave_rnn(masked_inputs[j], hidden_state, j)
+            xj = masked_inputs[j]
+            # xj = self.batch_norms[j](xj)
+            scale_embedding, hidden_state = self.wave_rnn(xj, hidden_state, j)
             hidden_embedding.append(scale_embedding)
 
         meta_data = {'masked_inputs': masked_inputs,
