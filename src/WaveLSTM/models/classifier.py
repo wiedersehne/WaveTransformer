@@ -123,7 +123,9 @@ def create_classifier(classes, seq_length, strands, chromosomes,
                       dir_path="configs/logs", verbose=False, monitor="val_loss", mode="min",
                       num_epochs=100, gpus=1,
                       validation_hook_batch=None, test_hook_batch=None,
-                      project='WaveLSTM-clf', run_id="null"):
+                      project='WaveLSTM-clf', run_id="null",
+                      outfile="../figs_and_demos/clf-output.pkl"
+                      ):
 
     encoder_config = {"seq_length": seq_length,
                       "strands": strands,
@@ -165,7 +167,7 @@ def create_classifier(classes, seq_length, strands, chromosomes,
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
-        patience=10,
+        patience=20,
         verbose=verbose
     )
 
@@ -185,6 +187,7 @@ def create_classifier(classes, seq_length, strands, chromosomes,
 
     save_output = waveLSTM_callbacks.SaveOutput(
         test_samples=test_hook_batch,
+        file_path=outfile
     )
 
     callbacks = [checkpoint_callback,

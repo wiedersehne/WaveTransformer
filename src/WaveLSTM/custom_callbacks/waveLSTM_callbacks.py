@@ -5,6 +5,7 @@ import pickle
 from pytorch_lightning import Callback
 import torch
 from sklearn.manifold import TSNE
+import umap
 import wandb
 import matplotlib.pyplot as plt
 from WaveLSTM.custom_callbacks.base import BaseCallback
@@ -35,8 +36,9 @@ class ViewEmbedding(Callback, BaseCallback):
             # latent = np.asarray(torch.matmul(z, V[:, :2]))
             # _ev = S**2/(z.shape[0]-1)
             # t-SNE
-            latent = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=3).fit_transform(
-                np.asarray(z))
+            # latent = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=30).fit_transform(np.asarray(z))
+            # U-MAP
+            latent = umap.UMAP(n_components=2, random_state=42).fit_transform(np.asarray(z))
 
             # fig, (ax, ax_hist) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [9, 1]})
             fig, ax = plt.subplots(1, 1)

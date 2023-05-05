@@ -172,7 +172,7 @@ def create_autoencoder(seq_length, strands, chromosomes,
                        num_epochs=20, gpus=1,
                        validation_hook_batch=None, test_hook_batch=None,
                        project='WaveLSTM-autoencoder', run_id="null",
-                       # norm_stats=None
+                       outfile="../figs_and_demos/ae-output.pkl"
                        ):
 
     _model = AutoEncoder(seq_length, strands, chromosomes,
@@ -214,7 +214,7 @@ def create_autoencoder(seq_length, strands, chromosomes,
 
     save_output = waveLSTM_callbacks.SaveOutput(
         test_samples=test_hook_batch,
-        file_path="../figs_and_demos/output.pkl"
+        file_path=outfile
     )
 
     ae_recon_callback = ae_callbacks.ViewRecurrentSignal(

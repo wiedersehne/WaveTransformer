@@ -50,8 +50,8 @@ class BaseCallback(object):
         #     print(handles, labels)
         #     legend2 = ax.legend(handles, labels, loc="upper right", title="Sizes")
 
-        ax.set_xlabel("t-SNE $1$")
-        ax.set_ylabel("t-SNE $2$")
+        ax.set_xlabel("Embed dim $1$")
+        ax.set_ylabel("Embed dim $2$")
 
         return ax
 

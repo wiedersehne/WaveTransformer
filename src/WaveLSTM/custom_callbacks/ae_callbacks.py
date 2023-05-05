@@ -4,6 +4,7 @@ import numpy as np
 from pytorch_lightning import Callback
 import torch
 from sklearn.manifold import TSNE
+import umap
 import wandb
 import matplotlib.pyplot as plt
 from WaveLSTM.custom_callbacks.base import BaseCallback
@@ -35,8 +36,10 @@ class ViewRecurrentSignal(Callback, BaseCallback):
             # (U, S, V) = torch.pca_lowrank(z, niter=2)
             # recurrent_proj_hidden.append(np.asarray(torch.matmul(z, V).detach().cpu()))
             # t-SNE
-            latent = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=3).fit_transform(
-                np.asarray(z.detach().cpu()))
+            # latent = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=3).fit_transform(
+            #     np.asarray(z.detach().cpu()))
+            latent = umap.UMAP(n_components=2, random_state=42).fit_transform(np.asarray(z.detach().cpu()))
+
             recurrent_proj_hidden.append(latent)
 
 
