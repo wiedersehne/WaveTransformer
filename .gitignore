@@ -243,3 +243,9 @@ cython_debug/
 /data
 !/experiments/low
 !/experiments/tst_model
+
+# Output files
+/experiments/1_demo/logs/
+/experiments/2_clonal_structures/logs/
+/experiments/3_ascat/logs/
+/experiments/notebooks/*.pkl

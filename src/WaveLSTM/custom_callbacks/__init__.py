@@ -1,12 +1,21 @@
-# Auto-encoder specific callbacks
-from .ae_callbacks import ViewRecurrentSignal
-
+## MODULE-SPECIFIC CALLBACKS
+###########################
 # Self-attention callbacks
-
-# Classifier specific callbacks
-from .clf_callbacks import ClfMultiScaleEmbedding
+from .attention import MultiResolutionEmbedding
+from .attention import Attention
 
 # Wave-LSTM module specific callbacks
-from .waveLSTM_callbacks import ViewEmbedding
-from .waveLSTM_callbacks import ViewSignal
-from .waveLSTM_callbacks import SaveOutput
+from .waveLSTM import ResolutionEmbedding
+from .waveLSTM import SaveOutput
+
+## MODEL-SPECIFIC CALLBACKS
+###########################
+# Auto-encoder specific callbacks
+from .autoencoder import RecurrentReconstruction          # Only applies to non-self attentive model
+from .autoencoder import Reconstruction
+
+# Classifier specific callbacks
+# None implemented
+
+# Survival
+from .survival import PerformanceMetrics

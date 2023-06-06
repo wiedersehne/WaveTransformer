@@ -15,7 +15,7 @@ class WaveletConv1dLSTM(nn.Module):
         s += f"\n\t Masked input width {self.masked_input_width}"
         return s
 
-    def __init__(self, out_features: int, strands: int, chromosomes: int,
+    def __init__(self, out_features: int, channels: int,
                  masked_input_width: int,
                  J: int,
                  hidden_size,
@@ -25,7 +25,7 @@ class WaveletConv1dLSTM(nn.Module):
                  dropout=0.5
                  ):
         """
-        out_features,  number of loci
+        out_features,  number of loci     # TODO: still needed?
         strands,       number of strands (=2 in example cases)
         chromosomes,   number of chromosomes (=23 in example cases)
         hidden_size,       dimension of the hidden and cell states of the LSTM
@@ -37,10 +37,9 @@ class WaveletConv1dLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
         self.lstm_layers = layers
-        self.C, self.H, self.W = strands, chromosomes, out_features     # NCHW format
         self.embed_dim = scale_embed_dim
 
-        self.channels = self.C * self.H
+        self.channels = channels
         self.masked_input_width = masked_input_width
 
         # LSTM
@@ -66,7 +65,7 @@ class WaveletConv1dLSTM(nn.Module):
         hidden,        [n layers, batch size, hid dim]
         cell,          [n layers, batch size, hid dim]
         """
-        # Use both strands and chromosomes as channels
+
         x = x.view((x.size(0), self.channels, -1))
 
         # Recurrent
@@ -74,19 +73,17 @@ class WaveletConv1dLSTM(nn.Module):
 
         # Output layer
         output = output[:, -1, :, :]                                # Take the last of `temporal` seq
-        # if self.permute:
-        #     output = output.permute(0, 2, 1)
         scale_embedding = self.conv_list[t](output)           #.squeeze(1)
 
         return scale_embedding, (h_next, c_next)
 
-    def init_states(self, batch):
+    def init_states(self, batch_size):
 
         return (torch.zeros((self.lstm_layers,
-                             batch.size(0),
+                             batch_size,
                              self.real_hidden_size,
                              self.masked_input_width), device=device),
                 torch.zeros((self.lstm_layers,
-                             batch.size(0),
+                             batch_size,
                              self.hidden_size,
                              self.masked_input_width), device=device))

@@ -31,7 +31,6 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
         self.attention_hops = config['attention-hops']
-        self.attention_pen = config['penalization_coeff']
 
     def init_weights(self, init_range=0.1):
         self.ws1.weight.data.uniform_(-init_range, init_range)
@@ -42,30 +41,28 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         s += str(self.encoder)
         return s
 
-    def forward(self, x: torch.tensor):
+    def forward(self, masked_inputs: torch.tensor, meta_data: dict):
         """
-        x,                 features = [B, Strands, Chromosomes, Sequence Length]
+        x,
         """
-        assert x.dim() == 4
 
-        hidden, meta_results = self.encoder(x)
-        meta_results.update({'hidden': hidden})
+        hidden, meta_data = self.encoder(masked_inputs, meta_data)
+        meta_data.update({'resolution_embeddings': hidden})
 
         hidden = torch.stack(hidden, dim=1)
-        size = hidden.size()                                            # [batch_size, num_multiscales, n_hidden]
+        size = hidden.size()                                           # [batch_size, num_multiscales, n_hidden]
         hops = self.attention_hops
+        compressed_embeddings = hidden.view(-1, size[2])               # [batch_size * num_multiscales, n_hidden]
 
-        compressed_embeddings = hidden.view(-1, size[2])
-
-        hbar = self.tanh(self.ws1(self.drop(compressed_embeddings)))              # [batch_size, num_multiscales, attention-unit]
+        hbar = self.tanh(self.ws1(self.drop(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
         alphas = self.ws2(hbar).view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention-hops]
         alphas = torch.transpose(alphas, 1, 2).contiguous()            # [batch_size, attention-hops, num_multiscales]
 
         alphas = self.softmax(alphas.view(-1, size[1]))                # [batch_size * attention-hops, num_multiscales]
         alphas = alphas.view(size[0], self.attention_hops, size[1])    # [batch_size, attention-hops, num_multiscales]
-        meta_results.update({"attention": alphas})                     # A in Bengio's self-attention paper
+        meta_data.update({"attention": alphas})                        # A in Bengio's self-attention paper
 
         # M in Bengio's paper
         output = torch.bmm(alphas, hidden)                             # [batch_size, attention-hops, n_hidden]
 
-        return output, meta_results
+        return output, meta_data
