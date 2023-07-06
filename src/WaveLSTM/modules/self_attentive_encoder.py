@@ -27,8 +27,8 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         self.drop = nn.Dropout(config['dropout'])
         self.ws1 = nn.LazyLinear(config['attention-unit'], bias=False)
         self.ws2 = nn.Linear(config['attention-unit'], config['attention-hops'], bias=False)
-        # self.init_weights(init_range=0.1)
-        self.tanh = nn.Tanh()
+        self.init_weights(init_range=0.1)
+        self.activation = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
         self.attention_hops = config['attention-hops']
 
@@ -54,7 +54,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         hops = self.attention_hops
         compressed_embeddings = hidden.view(-1, size[2])               # [batch_size * num_multiscales, n_hidden]
 
-        hbar = self.tanh(self.ws1(self.drop(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
+        hbar = self.activation(self.ws1(self.drop(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
         alphas = self.ws2(hbar).view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention-hops]
         alphas = torch.transpose(alphas, 1, 2).contiguous()            # [batch_size, attention-hops, num_multiscales]
 
@@ -62,7 +62,6 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         alphas = alphas.view(size[0], self.attention_hops, size[1])    # [batch_size, attention-hops, num_multiscales]
         meta_data.update({"attention": alphas})                        # A in Bengio's self-attention paper
 
-        # M in Bengio's paper
-        output = torch.bmm(alphas, hidden)                             # [batch_size, attention-hops, n_hidden]
+        M = self.drop(torch.bmm(alphas, hidden))                       # [batch_size, attention-hops, n_hidden]
 
-        return output, meta_data
+        return M, meta_data

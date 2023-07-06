@@ -47,7 +47,8 @@ class WaveletBase(object):
         Down-samples LSTM inputs (by removing j>J resolutions)
 
                 input:         get IWT(0, ..., alpha_j, 0, ...)
-                target:        get IWT(alpha_1, ..., alpha_{J})
+                target:        get IWT(alpha_1, ..., alpha_{J}) if pool_target is True
+                                    else IWT(alpha_1, ..., alpha_{J}, 0, ...)
 
         j>J are removed from the filter bank, effectively applying an average pooling operation.
 
@@ -90,15 +91,16 @@ class WaveletBase(object):
                     masked_bank = masked_bank[:self.J]
                 # Reconstruct truncated target signal
                 masked_target[:, c, :] = ptwt.waverec(masked_bank, self.wavelet)
-                # Normalise scale if pooled
-                if pool_targets:
-                    masked_target /= np.log2(x.size(2)/self.masked_width)
+
+            # Normalise scale if pooled
+            if pool_targets:
+                masked_target/= np.log2(x.size(2)/self.masked_width)
 
             masked_targets.append(masked_target)
 
         return masked_inputs, masked_targets
 
-    def __init__(self, seq_length, recursion_limit=None, wavelet="Haar"):
+    def __init__(self, seq_length, recursion_limit=None, wavelet="haar"):
         self.mu_features = None
         self.std_features = None
         self.wavelet = wavelet

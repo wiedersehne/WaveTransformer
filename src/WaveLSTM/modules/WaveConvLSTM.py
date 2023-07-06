@@ -52,12 +52,13 @@ class WaveletConv1dLSTM(nn.Module):
                               )
 
         # Output layers to map to the embedded space
-        conv_list = [nn.Sequential(
+        non_recurrent_output = [nn.Sequential(
             nn.Flatten(),
             nn.LazyLinear(out_features=self.embed_dim),
+            # nn.Tanh()
         )
             for _ in range(J)]
-        self.conv_list = nn.ModuleList(conv_list)
+        self.non_recurrent_output = nn.ModuleList(non_recurrent_output)
 
     def forward(self, x, hidden_state, t):
         """
@@ -73,7 +74,7 @@ class WaveletConv1dLSTM(nn.Module):
 
         # Output layer
         output = output[:, -1, :, :]                                # Take the last of `temporal` seq
-        scale_embedding = self.conv_list[t](output)           #.squeeze(1)
+        scale_embedding = self.non_recurrent_output[t](output)
 
         return scale_embedding, (h_next, c_next)
 

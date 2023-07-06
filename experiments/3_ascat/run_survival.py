@@ -19,8 +19,8 @@ def pre_train_encoder(dm, train=True):
     # Create modelon_validation_epoch_end
     model, trainer = create_sa_autoencoder(seq_length=dm.W, channels=dm.C,
                                            wavelet="haar",
-                                           hidden_size=128, layers=1, proj_size=0, scale_embed_dim=2, recursion_limit=5,
-                                           decoder="fc", r_hops=1, nfc=64,
+                                           hidden_size=32, layers=1, proj_size=0, scale_embed_dim=1, recursion_limit=5,
+                                           decoder="fc", r_hops=1, nfc=256,
                                            num_epochs=30,
                                            validation_hook_batch=next(iter(dm.val_dataloader())),
                                            test_hook_batch=test_all,
@@ -45,22 +45,38 @@ def pre_train_encoder(dm, train=True):
     trainer.test(model, dataloaders=dm.test_dataloader())
 
     # Dump attentie auto-encoder's state to file so it can be used as a pre-trained model for survival example
-    torch.save(model.a_encoder.state_dict(), "configs/ASCAT-attentive-pretrain.pt")
+    torch.save(model.a_encoder.state_dict(), "logs/ASCAT-attentive-pretrain.pt")
 
     wandb.finish()
 
-def run_wavelet_desurv(dm, train=True, use_cna=True):
+def run_wavelet_desurv(dm, cancers, train=True, use_cna=True, pre_train=None):
 
-    model, trainer = create_desurv(seq_length=dm.W, channels=dm.C,
+    # features, labels, survival_time, survival_status, days_since_birth, sex = [], [], [], [], [], []
+    # for t_batch in iter(dm.test_dataloader()):
+    #     print(t_batch.keys())
+    #     features.append(t_batch["feature"])
+    #     labels.append(t_batch["label"])
+    #     survival_time.append(t_batch["survival_time"])
+    #     survival_status.append(t_batch["survival_status"])
+    #     days_since_birth.append(t_batch["days_since_birth"])
+    #     sex.append(t_batch["sex"])
+    # test_all = {"feature": torch.concat(features, 0),
+    #             "label": torch.concat(labels, 0),
+    #             "survival_time": torch.concat(survival_time, 0),
+    #             "survival_status": torch.concat(survival_status, 0),
+    #             "days_since_birth": torch.concat(days_since_birth, 0),
+    #             "sex": torch.concat(sex, 0)}
+
+    model, trainer = create_desurv(dm.label_encoder.classes_, seq_length=dm.W, channels=dm.C,
                                    wavelet="haar",
-                                   hidden_size=128, layers=1, proj_size=0, scale_embed_dim=2, recursion_limit=5,
-                                   use_CNA=use_cna, pre_trained="configs/ASCAT-attentive-pretrain.pt",
-                                   num_epochs=30,
+                                   hidden_size=256, layers=1, proj_size=1, scale_embed_dim=1, recursion_limit=4,
+                                   use_CNA=use_cna, pre_trained=pre_train,
+                                   num_epochs=500,
                                    validation_hook_batch=next(iter(dm.val_dataloader())),
                                    test_hook_batch=next(iter(dm.test_dataloader())),
                                    project="WaveLSTM-surv",
                                    run_id=f"ASCAT-attentive-deSurv",
-                                   verbose=True
+                                   verbose=True,
                                    )
 
     # Normalizing stats for count number variant data
@@ -71,10 +87,11 @@ def run_wavelet_desurv(dm, train=True, use_cna=True):
     model.normalize_stats = (mean, std)
 
     # Standardizing scale for survival time
-    # t_train_max = np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())])
+    t_train_max = np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())])
     t_test_max = np.max([b["survival_time"].max() for b in iter(dm.test_dataloader())])
-    # model.norm_time = t_train_max
+    model.time_scale = t_train_max
     model.max_test_time = t_test_max
+    print(f"Norm time {model.time_scale}, {model.max_test_time}")
 
     if train:
         trainer.fit(model, datamodule=dm)
@@ -85,19 +102,22 @@ def run_wavelet_desurv(dm, train=True, use_cna=True):
     # Test model
     trainer.test(model, dataloaders=dm.test_dataloader())
 
+    # Predict
+    # trainer.predict(model, dataloaders=dm.test_dataloader())
 
 if __name__ == '__main__':
 
-
     # Filters for the cases of interest
-    cancer_types = ["BRCA"]  #"['OV', 'BRCA', 'GBM', 'KIRC', 'HNSC', 'LGG']
+    cancer_types = ['THCA', 'BRCA', 'OV', 'GBM', 'HNSC']
+    # cancer_types = ['THCA', 'OV', 'GBM', 'HNSC']
+    # cancer_types = ["BRCA"]
 
     # Load data
     dm = TCGA.data_modules.ascat.loaders.ASCATDataModule(batch_size=256, cancer_types=cancer_types,
-                                                         chrom_as_channels=False,
+                                                         chrom_as_channels=True,
                                                          sampler=False)
-
+    # print(np.unique(dm.data_frame["cancer_type"]))
     print(dm.C)
 
-    pre_train_encoder(dm, train=True)
-    run_wavelet_desurv(dm, train=True, use_cna=True)
+    # pre_train_encoder(dm, train=True)
+    run_wavelet_desurv(dm, cancer_types, train=True, use_cna="cnn", pre_train=None) #"logs/ASCAT-attentive-pretrain.pt")

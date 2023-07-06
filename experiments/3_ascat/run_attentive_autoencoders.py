@@ -49,7 +49,7 @@ def run_ascat():
     trainer.test(model, dataloaders=dm.test_dataloader())
 
     # Dump attentie auto-encoder's state to file so it can be used as a pre-trained model for survival example
-    torch.save(model.a_encoder.state_dict(), "./ascat_sae_pretrained.pt")
+    # torch.save(model.a_encoder.state_dict(), "./ascat_sae_pretrained.pt")
 
 
 

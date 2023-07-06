@@ -1,3 +1,6 @@
 torch==1.10.0
 pytorch_lightning==1.5.5
+wandb==0.13.0
 
+# experiments
+plotly==5.15.0            # interactive wandb plots

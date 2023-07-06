@@ -12,7 +12,8 @@ class Conv1dLSTMCell(nn.Module):
                  kernel_size: int = 3,
                  bias: bool = True,
                  proj_size: int = 0,
-                 dropout: float = 0.):
+                 dropout: float = 0.,
+                 dropout_proj: float=0.):
         """
         Initialize ConvLSTM cell.
 
@@ -46,13 +47,15 @@ class Conv1dLSTMCell(nn.Module):
                               padding=self.padding,
                               bias=self.bias)
         if self.proj_size > 0:
-            self.conv_proj = nn.Sequential(
+            self.recurrent_drop = nn.Dropout(dropout_proj)
+            self.recurrent_output = nn.Sequential(
                 nn.Conv1d(in_channels=self.hidden_size,
                           out_channels=self.real_hidden_size,
                           kernel_size=self.kernel_size,
                           padding=self.padding,
                           bias=self.bias),
-                nn.Tanh())
+                nn.Tanh()
+            )
 
 
     def forward(self, input_tensor, state):
@@ -62,7 +65,6 @@ class Conv1dLSTMCell(nn.Module):
         hidden, cell = state                                 # (N, hidden_size, width)
         input_tensor = self.drop(input_tensor)
 
-        # print(f"xx: {input_tensor.shape}, {hidden.shape}")
         combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
         combined_conv = self.conv(combined)                  # (N, 4 * hidden_size, width)
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_size, dim=1)  # (N, hidden_size, width)
@@ -73,10 +75,10 @@ class Conv1dLSTMCell(nn.Module):
         g = torch.tanh(cc_g)
 
         c_next = f * cell + i * g                             #
-        h_next = o * torch.tanh(c_next)                       # M in paper
+        h_next = o * torch.tanh(c_next)
 
         if self.proj_size > 0:
-            h_next = self.conv_proj(h_next)                       # (N, proj_size, width)
+            h_next = self.recurrent_output(self.recurrent_drop(h_next))                       # (N, proj_size, width)
 
         return h_next, c_next
 

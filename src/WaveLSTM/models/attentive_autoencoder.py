@@ -45,6 +45,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
                              wavelet=encoder_config["wavelet"])
 
         self.save_hyperparameters()
+        self.pool_targets = False                                                              # Average pool targets
         self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
 
         # Encoder
@@ -54,35 +55,35 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
                                               config=attention_config)
 
         # Decoder:
-
+        self.target_width = self.masked_width if self.pool_targets else self.seq_length
         # Convolutional:  Decode from the multi-resolution embedding (M) using a transposed convolutional neural network
-        # Recursively work backwards, to find what the linear layer's output dim should be
-        # ... a linear layer is needed as we aren't just tranposing (inverting) a CNN encoder
-        # ... ... i.e. we don't automatically encode to a correct pooled width.
-        if decoder_config["arch"] == "cnn":
+        if decoder_config["arch"] == "rccae":
             k_size = 7
             stride = 1
-            # w_cnn = self.seq_length
-            # for cnn_layer in range(4):
-            #     w_cnn = self.get_conv_shape(w_cnn, k_size, stride=stride)
+            w_cnn = self.target_width * self.channels
+            # Recursively work backwards, to find what the linear layer's output dim should be
+            for cnn_layer in range(3):
+                w_cnn = self.get_conv_shape(w_cnn, k_size, stride=stride)
             self.decoder = nn.Sequential(
-                nn.ConvTranspose1d(attention_config["attention-hops"], 8, k_size, stride=1, padding=1),
-                nn.ReLU(),
-                nn.ConvTranspose1d(8, 16, k_size, stride=stride),
-                nn.ReLU(),
-                nn.ConvTranspose1d(16, 64, k_size, stride=stride),
-                nn.ReLU(),
-                nn.ConvTranspose1d(64, self.encoder.channels, k_size, stride=stride),
-                nn.ReLU(),
+                # nn.ConvTranspose1d(attention_config["attention-hops"], 64, k_size, stride=1, padding=1),
                 torch.nn.Flatten(start_dim=1),
-                nn.LazyLinear(self.encoder.channels * self.seq_length),
-                torch.nn.Unflatten(1, (self.encoder.channels, self.seq_length))
+                nn.Linear(encoder_config["scale_embed_dim"] * attention_config["attention-hops"], 32 * w_cnn),
+                torch.nn.Unflatten(1, (32, w_cnn)),
+                nn.LeakyReLU(),
+                nn.ConvTranspose1d(32, 64, k_size, stride=stride),
+                nn.LeakyReLU(),
+                nn.ConvTranspose1d(64, 128, k_size, stride=stride),
+                nn.LeakyReLU(),
+                nn.ConvTranspose1d(128, 1, k_size, stride=stride),
+                # nn.ReLU(),
+                torch.nn.Flatten(start_dim=1),
+                # nn.LazyLinear(self.encoder.channels * self.seq_length),
+                torch.nn.Unflatten(1, (self.encoder.channels, self.target_width))
             )
-
         elif decoder_config["arch"] == "fc":
             # Fully connected
-            nfc = decoder_config["nfc"]
-            w = self.seq_length
+            nfc = 256
+            w = self.target_width
             self.decoder = nn.Sequential(
                 torch.nn.Flatten(start_dim=1),
                 nn.Linear(encoder_config["scale_embed_dim"] * attention_config["attention-hops"], nfc),
@@ -90,6 +91,8 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
                 nn.Linear(nfc, w * self.encoder.channels),
                 nn.Unflatten(1, (self.encoder.channels, w)),
             )
+        else:
+            raise NotImplementedError
 
     def forward(self, x: torch.tensor):
         """
@@ -97,7 +100,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
         assert x.dim() == 3
 
         # Input masking
-        _, masked_targets = self.sequence_mask(x)
+        _, masked_targets = self.sequence_mask(x, pool_targets=self.pool_targets)
 
         scaled_masked_inputs, _ = self.sequence_mask(self.scale(x))
         meta_data = {
@@ -106,12 +109,11 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
         }
 
         # Attentively encode
-        output, meta_data = self.a_encoder(scaled_masked_inputs, meta_data)
-        meta_data.update({"M": output})                                 # [batch_size, attention-hops, scale_embed_dim]
-        # output = output.view(output.size(0), -1)                      # [batch_size, attention-hops * scale_embed_dim]
+        M, meta_data = self.a_encoder(scaled_masked_inputs, meta_data)
+        meta_data.update({"M": M})                                 # [batch_size, attention-hops, scale_embed_dim]
 
         # Decode
-        recon = self.decoder(output)                                    # [batch_size, channels, width]
+        recon = self.decoder(M)                                    # [batch_size, channels, width]
         meta_data.update({'masked_predictions': [recon],
                           })
 
@@ -121,7 +123,8 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
         recon, meta_results = self(batch['feature'])
         target = meta_results["masked_targets"][-1] if filter else batch['feature']
         return {'loss': F.mse_loss(torch.flatten(recon, start_dim=1),
-                                   torch.flatten(self.scale(target), start_dim=1))}
+                                   torch.flatten(self.scale(target), start_dim=1))
+                }
 
     def training_step(self, batch, batch_idx):
         train_loss_dict = self.loss(batch, batch_idx)
@@ -155,7 +158,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
 
 def create_sa_autoencoder(seq_length, channels,
                           hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128,
-                          r_hops=1, decoder="fc", nfc=256,
+                          r_hops=1, decoder="fc",
                           wavelet='haar',
                           recursion_limit=None,
                           dir_path="logs", verbose=False,  monitor="val_loss",
@@ -174,13 +177,13 @@ def create_sa_autoencoder(seq_length, channels,
                       "wavelet": wavelet,
                       "recursion_limit": recursion_limit
                       }
-    attention_config = {"dropout": 0.0,
+    attention_config = {"dropout": 0.,
                         "attention-unit": 350,
                         "attention-hops": r_hops,
                         "real_hidden_size": proj_size if proj_size > 0 else hidden_size,       # Encoder's hidden size
                         }
     decoder_config = {"arch": decoder,
-                      "nfc": nfc}
+                      }
 
     _model = AttentiveAutoEncoder(encoder_config=encoder_config,
                                   attention_config=attention_config,
@@ -248,7 +251,7 @@ def create_sa_autoencoder(seq_length, channels,
         logger=wandb_logger,
         callbacks=callbacks,
         max_epochs=num_epochs,
-        check_val_every_n_epoch=2,
+        check_val_every_n_epoch=5,
         log_every_n_steps=2,
         gpus=gpus,
     )
