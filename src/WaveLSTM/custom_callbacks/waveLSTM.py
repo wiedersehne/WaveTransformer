@@ -57,8 +57,9 @@ class ResolutionEmbedding(Callback, BaseCallback):
                     fig.suptitle(f"j-{level+1} resolution embedding (U-MAP)")
                     hj_proj = umap.UMAP(n_components=2).fit_transform(hj)  # random_state=42
                 else:
-                    fig.suptitle(f"j-{level + 1} resolution embedding (t-SNE)")
-                    hj_proj = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=30).fit_transform(hj)
+                    perp = np.max((3, np.min((30, int(0.1 * hj.shape[0])))))
+                    fig.suptitle(f"j-{level + 1} resolution embedding (t-SNE, perplexity={perp})")
+                    hj_proj = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=perp).fit_transform(hj)
                 self.embedding(ax, hj_proj, labels=labels)
 
             plt.tight_layout()

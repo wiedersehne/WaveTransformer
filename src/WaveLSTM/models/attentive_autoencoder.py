@@ -37,6 +37,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
                  encoder_config,
                  attention_config,
                  decoder_config,
+                 pool_targets=False
                  ):
         super().__init__()
         WaveletBase.__init__(self,
@@ -45,8 +46,9 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
                              wavelet=encoder_config["wavelet"])
 
         self.save_hyperparameters()
-        self.pool_targets = False                                                              # Average pool targets
         self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
+        # Use pooled width for targets. Note, this isn't filtering j>J sources, that is done in the loss kwarg.
+        self.pool_targets = pool_targets
 
         # Encoder
         encoder_config["J"] = self.J
@@ -122,8 +124,10 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
     def loss(self, batch, batch_idx, filter=True) -> dict:
         recon, meta_results = self(batch['feature'])
         target = meta_results["masked_targets"][-1] if filter else batch['feature']
+        if self.pool_targets is False:
+            target = self.scale(target)
         return {'loss': F.mse_loss(torch.flatten(recon, start_dim=1),
-                                   torch.flatten(self.scale(target), start_dim=1))
+                                   torch.flatten(target, start_dim=1))
                 }
 
     def training_step(self, batch, batch_idx):
@@ -158,7 +162,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, WaveletBase):
 
 def create_sa_autoencoder(seq_length, channels,
                           hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128,
-                          r_hops=1, decoder="fc",
+                          r_hops=1, decoder="fc", pool_targets=False,
                           wavelet='haar',
                           recursion_limit=None,
                           dir_path="logs", verbose=False,  monitor="val_loss",
@@ -188,6 +192,7 @@ def create_sa_autoencoder(seq_length, channels,
     _model = AttentiveAutoEncoder(encoder_config=encoder_config,
                                   attention_config=attention_config,
                                   decoder_config=decoder_config,
+                                  pool_targets=pool_targets
                                   )
     print(_model)
 
@@ -208,7 +213,7 @@ def create_sa_autoencoder(seq_length, channels,
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0.00,
-        patience=10,
+        patience=3,
         verbose=verbose
     )
 

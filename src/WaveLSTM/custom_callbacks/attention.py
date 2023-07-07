@@ -161,8 +161,9 @@ class MultiResolutionEmbedding(Callback, BaseCallback):
                 fig.suptitle(f"Multi-resolution embedding (U-MAP)")
                 Mbar_proj = umap.UMAP(n_components=2).fit_transform(Mbar)  # random_state=42
             else:
-                fig.suptitle(f"Multi-resolution embedding (t-SNE)")
-                Mbar_proj = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=30).fit_transform(Mbar)
+                perp = np.max((3, np.min((30, int(0.1 * Mbar.shape[0])))))
+                fig.suptitle(f"Multi-resolution embedding (t-SNE, perplexity={perp})")
+                Mbar_proj = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=20).fit_transform(Mbar)
             self.embedding(ax, Mbar_proj, labels=labels)
 
         plt.tight_layout()
