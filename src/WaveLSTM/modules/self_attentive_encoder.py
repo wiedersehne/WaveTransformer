@@ -62,6 +62,6 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         alphas = alphas.view(size[0], self.attention_hops, size[1])    # [batch_size, attention-hops, num_multiscales]
         meta_data.update({"attention": alphas})                        # A in Bengio's self-attention paper
 
-        M = self.drop(torch.bmm(alphas, hidden))                       # [batch_size, attention-hops, n_hidden]
+        M = torch.bmm(alphas, hidden)                                  # [batch_size, attention-hops, n_hidden]
 
         return M, meta_data

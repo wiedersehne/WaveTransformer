@@ -247,5 +247,5 @@ cython_debug/
 # Output files
 /experiments/demo/logs/
 /experiments/clonal_structures/logs/
-/experiments/3_ascat/logs/
+/experiments/ascat/logs/
 /experiments/notebooks/*.pkl

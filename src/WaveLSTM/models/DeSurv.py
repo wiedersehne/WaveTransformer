@@ -77,25 +77,25 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
         self.save_hyperparameters()
         self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
-        self.cna = config["CNA"]
+        self.encoder_type = config["encoder_type"].lower()
         # Scaling time
         self._norm_time = 1                   # By default don't scale time
         self._test_time = 1                   # By default test on range [0, _test_time]
 
         # Encoder
         # Wavelet encoder
-        if self.cna is True:
+        if self.encoder_type == "wavelstm":
             encoder_config["J"] = self.J
             encoder_config["pooled_width"] = self.masked_width
-            self.a_encoder = SelfAttentiveEncoder(encoder_config=encoder_config,
-                                                  config=attention_config)
+            self.encoder = SelfAttentiveEncoder(encoder_config=encoder_config,
+                                                config=attention_config)
             if config["pre_trained"] is not None:
                 print("Loading pre-trained self attentive encoder")
-                self.a_encoder.load_state_dict(torch.load(config["pre_trained"]))
+                self.encoder.load_state_dict(torch.load(config["pre_trained"]))
         # CNN encoder
-        if self.cna == "cnn":
+        if self.encoder_type == "cnn":
             k_size = 7
-            self.cnn_encoder = nn.Sequential(
+            self.encoder = nn.Sequential(
                 nn.Conv1d(self.channels, 128, k_size, stride=1),
                 nn.LeakyReLU(),
                 nn.Conv1d(128, 64, k_size, stride=1),
@@ -103,20 +103,30 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
                 nn.Conv1d(64, 32, k_size, stride=1),
                 nn.LeakyReLU(),
                 nn.Flatten(),
-                nn.LazyLinear(out_features=1)
+                nn.LazyLinear(out_features=encoder_config["scale_embed_dim"])
             )
+        if self.encoder_type == "lstm":
+            self.encoder = nn.LSTM(input_size=self.channels,
+                                   hidden_size=encoder_config["hidden_size"],
+                                   proj_size=encoder_config["scale_embed_dim"],
+                                   num_layers=encoder_config["layers"],
+                                   bidirectional=False,
+                                   batch_first=True)
+            self.encoder_outlayer = nn.LazyLinear(out_features=1)
+
+        self.drop = nn.Dropout(config["dropout"])
 
         # Survival model
         # self.drop = nn.Dropout(config["dropout"])
         hidden_dim = 32                                     # Hidden dimension size inside ODE model
         lr = np.inf                                         # This learning rate isnt used - just caveat of imported code
-        if (self.cna is True) or (self.cna.lower() == "wavelstm"):
+        if (self.encoder_type is True) or (self.encoder_type.lower() == "wavelstm"):
             # Flattened multi-resolution embedding dimension + number of additional covariates
             c_dim = encoder_config["scale_embed_dim"] * attention_config["attention-hops"]  + 2
-        elif self.cna.lower() == "avg":
+        elif self.encoder_type.lower() == "avg":
             c_dim = 3
-        elif self.cna.lower() == "cnn":
-            c_dim = 3
+        elif self.encoder_type.lower() == "cnn" or self.encoder_type.lower() == "lstm":
+            c_dim = encoder_config["scale_embed_dim"] + 2
         else:
             print("Not using Count Number Alteration data")
             c_dim = 2
@@ -139,7 +149,7 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         meta_data = {}
 
         # Whether we additionally include the CNA data
-        if self.cna is True:
+        if self.encoder_type == "wavelstm":
             # Input masking
             masked_inputs, masked_targets = self.sequence_mask(self.scale(x))
             meta_data.update({
@@ -147,15 +157,19 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
                 'scaled_masked_targets': masked_targets,
             })
             # Attentively encode
-            h, meta_data = self.a_encoder(masked_inputs, meta_data)  # [batch_size, attention-hops, scale_embed_dim]
+            h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, scale_embed_dim]
             meta_data.update({"M": h})
-            # Flatten multi-resolution embeddings
-            h = h.view(h.size(0), -1)                                # [batch_size, attention-hops * scale_embed_dim]
+            h = self.drop(h.view(h.size(0), -1))                   # Flatten multi-resolution embeddings
             X = torch.concat((h, c), dim=1)
-        elif self.cna == "cnn":
-            h = self.cnn_encoder(self.scale(x))
+        elif self.encoder_type == "cnn":
+            h = self.drop(self.encoder(self.scale(x)))
             X = torch.concat((h, c), dim=1)
-        elif self.cna == "avg":
+        elif self.encoder_type == "lstm":
+            out, (hn, cn) = self.encoder(self.scale(x).permute(0, 2, 1))
+            h = self.drop(self.encoder_outlayer(cn[-1, :, :]))
+            # h = self.drop(hn[-1, :, :])
+            X = torch.concat((h, c), dim=1)
+        elif self.encoder_type == "avg":
             h = torch.mean(x.view(x.size(0), -1), 1, keepdim=True)   # [batch_size, 1]
             X = torch.concat((h, c), dim=1)
         else:
@@ -199,18 +213,23 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         pred_meta_data = {}
 
         # Whether we additionally include the CNA data
-        if self.cna is True:
+        if self.encoder_type == "wavelstm":
             # Input masking
             masked_inputs, _ = self.sequence_mask(self.scale(x))
             # Attentively encode
-            h, pred_meta_data = self.a_encoder(masked_inputs, pred_meta_data)  # [batch_size, attention-hops, scale_embed_dim]
+            h, pred_meta_data = self.encoder(masked_inputs, pred_meta_data)  # [batch_size, attention-hops, scale_embed_dim]
             # Flatten multi-resolution embeddings
             h = h.view(h.size(0), -1)                               # [batch_size, attention-hops * scale_embed_dim]
             X = torch.concat((h, c), dim=1)
-        elif self.cna == "cnn":
-            h = self.cnn_encoder(self.scale(x))
+        elif self.encoder_type == "cnn":
+            h = self.encoder(self.scale(x))
             X = torch.concat((h, c), dim=1)
-        elif self.cna == "avg":
+        elif self.encoder_type == "lstm":
+            out, (hn, cn) = self.encoder(self.scale(x).permute(0, 2, 1))
+            # h = hn[-1, :, :]
+            h = self.encoder_outlayer(cn[-1, :, :])
+            X = torch.concat((h, c), dim=1)
+        elif self.encoder_type == "avg":
             h = torch.mean(x.view(x.size(0), -1), 1, keepdim=True)   # [batch_size, 1]
             X = torch.concat((h, c), dim=1)
         else:
@@ -247,9 +266,11 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         }
 
 def create_desurv(cancers, seq_length, channels,
-                  use_CNA=True,
+                  encoder_type="waveLSTM",
                   pre_trained=None,
-                  hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128, wavelet='haar', recursion_limit=None,
+                  hidden_size=256, layers=1, proj_size=0, scale_embed_dim=1, wavelet='haar', recursion_limit=None,
+                  r_hops=1, atn_drop=0.5,
+                  surv_dropout=0.5,
                   dir_path="logs", verbose=False, monitor="val_loss",
                   num_epochs=200, gpus=1,
                   validation_hook_batch=None, test_hook_batch=None,
@@ -266,13 +287,14 @@ def create_desurv(cancers, seq_length, channels,
                       "wavelet": wavelet,
                       "recursion_limit": recursion_limit
                       }
-    attention_config = {"dropout": 0.5,
+    attention_config = {"dropout": atn_drop,
                         "attention-unit": 350,
-                        "attention-hops": 1,
+                        "attention-hops": r_hops,
                         "penalization_coeff": 0.,
                         "real_hidden_size": proj_size if proj_size > 0 else hidden_size,  # Encoder's hidden size
                         }
-    surv_config = {"CNA": use_CNA,
+    surv_config = {"dropout": surv_dropout,
+                   "encoder_type": encoder_type,
                    "pre_trained": pre_trained}
 
     _model = DeSurv(encoder_config=encoder_config,
@@ -296,9 +318,9 @@ def create_desurv(cancers, seq_length, channels,
 
     # monitor Integrated Negative Binomial LogLikelihood from PerformanceMetrics callback (see below)
     early_stop_callback = EarlyStopping(
-        monitor="Val:inbll", mode="min",
-        min_delta=0.005,
-        patience=1,
+        monitor="val_loss", mode="min",
+        min_delta=0,
+        patience=0,
         verbose=verbose
     )
 
@@ -317,35 +339,35 @@ def create_desurv(cancers, seq_length, channels,
         samples=True,
     )
 
-    viz_embedding_callback = waveLSTM.ResolutionEmbedding(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
-        label_dictionary=label_dictionary
-    )
-
-    viz_multi_res_embed = attention.MultiResolutionEmbedding(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
-        label_dictionary=label_dictionary
-    )
-
-    viz_attention = attention.Attention(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
-        label_dictionary = label_dictionary
-    )
-
-    save_output = waveLSTM.SaveOutput(
-        test_samples=test_hook_batch,
-        file_path=outfile
-    )
-
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  surv_metrics,
                  viz_KM,
                  ]
-    if use_CNA == True:
+    if encoder_type.lower() == "wavelstm":
+        viz_embedding_callback = waveLSTM.ResolutionEmbedding(
+            val_samples=validation_hook_batch,
+            test_samples=test_hook_batch,
+            label_dictionary=label_dictionary
+        )
+
+        viz_multi_res_embed = attention.MultiResolutionEmbedding(
+            val_samples=validation_hook_batch,
+            test_samples=test_hook_batch,
+            label_dictionary=label_dictionary
+        )
+
+        viz_attention = attention.Attention(
+            val_samples=validation_hook_batch,
+            test_samples=test_hook_batch,
+            label_dictionary=label_dictionary
+        )
+
+        save_output = waveLSTM.SaveOutput(
+            test_samples=test_hook_batch,
+            file_path=outfile
+        )
+
         # Add the wave-LSTM encoder callbacks
         callbacks += [viz_embedding_callback,
                       viz_multi_res_embed,

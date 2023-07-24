@@ -6,7 +6,8 @@ from WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder
 # TODO: make a proper configuration (.yaml or whatever)
 
 def run_CHISEL():
-    dm = TCGA.data_modules.CHISEL_S0E.loaders.DataModule(batch_size=32, sampler=False, chr_length=256)
+    dm = TCGA.data_modules.CHISEL_S0E.loaders.DataModule(batch_size=32, sampler=False, chr_length=256, stack=False)
+    print(f"width {dm.W}, channels {dm.C}")
 
     features, labels = [], []
     for t_batch in iter(dm.test_dataloader()):
@@ -16,9 +17,9 @@ def run_CHISEL():
                 "label": torch.concat(labels, 0)}
 
     # Create modelon_validation_epoch_end
-    model, trainer = create_sa_autoencoder(seq_length=dm.W, channels=2*22,
+    model, trainer = create_sa_autoencoder(seq_length=dm.W, channels=dm.C,
                                            wavelet="haar",
-                                           hidden_size=256, layers=1, proj_size=0, scale_embed_dim=3,
+                                           hidden_size=256, layers=1, proj_size=64, scale_embed_dim=3,
                                            r_hops=1,  decoder="rccae", pool_targets=False,
                                            recursion_limit=4,
                                            num_epochs=75,
