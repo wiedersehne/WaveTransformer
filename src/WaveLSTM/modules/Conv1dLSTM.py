@@ -12,8 +12,9 @@ class Conv1dLSTMCell(nn.Module):
                  kernel_size: int = 3,
                  bias: bool = True,
                  proj_size: int = 0,
-                 dropout: float = 0.,
-                 dropout_proj: float=0.):
+                 dropout_input: float = 0.,
+                 dropout_proj: float = 0.
+                 ):
         """
         Initialize ConvLSTM cell.
 
@@ -40,7 +41,7 @@ class Conv1dLSTMCell(nn.Module):
         self.padding = kernel_size // 2
         self.bias = bias
 
-        self.drop = nn.Dropout(dropout)
+        self.drop_in = nn.Dropout(dropout_input)
         self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_size,
                               out_channels=4 * self.hidden_size,
                               kernel_size=self.kernel_size,
@@ -63,7 +64,7 @@ class Conv1dLSTMCell(nn.Module):
         input_tensor: (N, Channels, Width)
         """
         hidden, cell = state                                 # (N, hidden_size, width)
-        input_tensor = self.drop(input_tensor)
+        input_tensor = self.drop_in(input_tensor)
 
         combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
         combined_conv = self.conv(combined)                  # (N, 4 * hidden_size, width)
@@ -118,8 +119,10 @@ class Conv1dLSTM(nn.Module):
                  kernel_size,
                  num_layers,
                  bias=True,
-                 dropout=0,
                  proj_size=0,
+                 dropout_input: float = 0.,
+                 dropout_hidden: float = 0.,
+                 dropout_proj: float = 0.
                  ):
 
         super(Conv1dLSTM, self).__init__()
@@ -139,7 +142,8 @@ class Conv1dLSTM(nn.Module):
                                             kernel_size=self.kernel_size,
                                             bias=self.bias,
                                             proj_size=proj_size,
-                                            dropout=0.0 if i == 0 else dropout))
+                                            dropout_input=dropout_input if i == 0 else dropout_hidden,
+                                            dropout_proj=dropout_proj))
         self.cell_list = nn.ModuleList(cell_list)
 
     def forward(self, input_tensor, hidden_state):

@@ -192,3 +192,4 @@ class KaplanMeier(Callback, BaseCallback):
             # Run callback
             self.run_callback(features, self.test_labels, f"Test:KM", trainer, pl_module,
                               **test_surv)
+

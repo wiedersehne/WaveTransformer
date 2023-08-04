@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR, LambdaLR
 # PyTorch-lightning
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
@@ -54,20 +54,10 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         else:
             return t / self.time_scale
 
-    def sort(self, x, c, t, k):
-        # raise NotImplementedError   # Removed from Dom's code - I suspect it was added to analyse predictions by order
-        # Sort by increasing survival times
-        argsort_t = torch.argsort(t)
-        x_ = x[argsort_t, :, :]
-        c_ = c[argsort_t, :]
-        t_ = t[argsort_t]
-        k_ = k[argsort_t]
-        return (x_, c_, t_, k_), argsort_t
-
     def __init__(self,
                  encoder_config,
                  attention_config,
-                 config):
+                 surv_config):
 
         super().__init__()
         WaveletBase.__init__(self,
@@ -77,10 +67,13 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
         self.save_hyperparameters()
         self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
-        self.encoder_type = config["encoder_type"].lower()
+        self.encoder_type = surv_config["encoder_type"].lower()
         # Scaling time
         self._norm_time = 1                   # By default don't scale time
         self._test_time = 1                   # By default test on range [0, _test_time]
+        # Penalisations
+        self.diversity_coef = surv_config["diversity_coef"]
+        self.weight_decay = surv_config["weight_decay"]
 
         # Encoder
         # Wavelet encoder
@@ -89,18 +82,18 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
             encoder_config["pooled_width"] = self.masked_width
             self.encoder = SelfAttentiveEncoder(encoder_config=encoder_config,
                                                 config=attention_config)
-            if config["pre_trained"] is not None:
-                print("Loading pre-trained self attentive encoder")
-                self.encoder.load_state_dict(torch.load(config["pre_trained"]))
         # CNN encoder
         if self.encoder_type == "cnn":
+            # Same architecture as rcCAE. See: https://github.com/zhyu-lab/rccae/blob/main/cae/autoencoder.py
+            # We reduce the width of the network by a factor of 4 to reduce overfitting.
             k_size = 7
+            net_size = 4 # 4 gives the same encoder network as rcCAE (with chromosomes as channels)
             self.encoder = nn.Sequential(
-                nn.Conv1d(self.channels, 128, k_size, stride=1),
+                nn.Conv1d(self.channels, 32*net_size, k_size, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(128, 64, k_size, stride=1),
+                nn.Conv1d(32*net_size, 16*net_size, k_size, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(64, 32, k_size, stride=1),
+                nn.Conv1d(16*net_size, 8*net_size, k_size, stride=1),
                 nn.LeakyReLU(),
                 nn.Flatten(),
                 nn.LazyLinear(out_features=encoder_config["scale_embed_dim"])
@@ -112,24 +105,22 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
                                    num_layers=encoder_config["layers"],
                                    bidirectional=False,
                                    batch_first=True)
-            self.encoder_outlayer = nn.LazyLinear(out_features=1)
-
-        self.drop = nn.Dropout(config["dropout"])
+            self.encoder_outlayer = nn.LazyLinear(out_features=encoder_config["scale_embed_dim"])
 
         # Survival model
-        # self.drop = nn.Dropout(config["dropout"])
-        hidden_dim = 32                                     # Hidden dimension size inside ODE model
-        lr = np.inf                                         # This learning rate isnt used - just caveat of imported code
-        if (self.encoder_type is True) or (self.encoder_type.lower() == "wavelstm"):
+        hidden_dim = 32  # Hidden dimension size inside ODE model
+        lr = np.inf                                          # This learning rate isnt used - just caveat of imported code
+        if self.encoder_type == "wavelstm":
             # Flattened multi-resolution embedding dimension + number of additional covariates
             c_dim = encoder_config["scale_embed_dim"] * attention_config["attention-hops"]  + 2
-        elif self.encoder_type.lower() == "avg":
+        elif self.encoder_type in ["average", "avg"]:
             c_dim = 3
-        elif self.encoder_type.lower() == "cnn" or self.encoder_type.lower() == "lstm":
+        elif self.encoder_type in ["cnn", "lstm"]:
             c_dim = encoder_config["scale_embed_dim"] + 2
-        else:
-            print("Not using Count Number Alteration data")
+        elif self.encoder_type in ["none"]:
             c_dim = 2
+        else:
+            raise NotImplementedError
         self.surv_model = ODESurvSingle(lr, c_dim, hidden_dim, device="gpu")     # 2 baseline covariates
 
     def forward(self, x: torch.tensor, c: torch.tensor, t: torch.tensor, k: torch.tensor):
@@ -159,21 +150,23 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
             # Attentively encode
             h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, scale_embed_dim]
             meta_data.update({"M": h})
-            h = self.drop(h.view(h.size(0), -1))                   # Flatten multi-resolution embeddings
+            h = h.view(h.size(0), -1)                  # Flatten multi-resolution embeddings
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "cnn":
-            h = self.drop(self.encoder(self.scale(x)))
+            h = self.encoder(self.scale(x))
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "lstm":
             out, (hn, cn) = self.encoder(self.scale(x).permute(0, 2, 1))
-            h = self.drop(self.encoder_outlayer(cn[-1, :, :]))
-            # h = self.drop(hn[-1, :, :])
+            h = self.encoder_outlayer(cn[-1, :, :])
+            # h = hn[-1, :, :]
             X = torch.concat((h, c), dim=1)
-        elif self.encoder_type == "avg":
+        elif self.encoder_type in ["average", "avg"]:
             h = torch.mean(x.view(x.size(0), -1), 1, keepdim=True)   # [batch_size, 1]
             X = torch.concat((h, c), dim=1)
-        else:
+        elif self.encoder_type in ["none"]:
             X = c
+        else:
+            raise NotImplementedError
 
         # Survival
         meta_data.update({"ode_input": X})
@@ -189,21 +182,36 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
                          torch.tensor([1 if i == "male" else 0 for i in batch['sex']], device=device)),
                         dim=1)
         losses, meta_data = self(x, c, t, k)
-        return losses
+        loss = losses["loss"]
+
+        # Calculate diversity penalization
+        #   promotes diversity between hops if penality_coef > 0,
+        #   promotes diversity within hops r==1 and < 0
+        if "attention" in meta_data.keys() and self.diversity_coef != 0:
+            atn = meta_data["attention"]            # [bsz, rhops, J]
+            atn_t = torch.transpose(atn, 1, 2).contiguous()
+            eye = torch.stack([torch.eye(atn.shape[1]) for _ in range(atn.shape[0])], dim=0)
+            p = torch.norm(torch.bmm(atn, atn_t) - eye.to(device))
+            loss += self.diversity_coef * p
+
+        return {"loss": loss}
 
     def training_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("train_loss", losses["loss"], prog_bar=True, logger=True)
+        self.log("train_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+                 prog_bar=True, logger=True, on_epoch=True)
         return losses["loss"]
 
     def validation_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("val_loss", losses["loss"], prog_bar=True, logger=True)
+        self.log("val_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+                 prog_bar=True, logger=True)
         return losses["loss"]
 
     def test_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("test_loss", losses["loss"], prog_bar=True, logger=True)
+        self.log("test_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+                 prog_bar=True, logger=True)
         return losses["loss"]
 
     def predict(self, x: torch.tensor, c: torch.tensor, t_eval: np.ndarray):
@@ -229,7 +237,7 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
             # h = hn[-1, :, :]
             h = self.encoder_outlayer(cn[-1, :, :])
             X = torch.concat((h, c), dim=1)
-        elif self.encoder_type == "avg":
+        elif self.encoder_type in ["average", "avg"]:
             h = torch.mean(x.view(x.size(0), -1), 1, keepdim=True)   # [batch_size, 1]
             X = torch.concat((h, c), dim=1)
         else:
@@ -237,8 +245,9 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
         # All x.size(0) * n_eval prediction inputs
         t_test = torch.tensor(np.concatenate([t_eval] * X.shape[0], 0), dtype=torch.float32, device=device)
-        X_test = torch.tensor(np.repeat(X.cpu(), [t_eval.size] * X.shape[0], axis=0), device=device,
-                              dtype=torch.float32)  # TODO: keep inside torch
+        # X_test_Dom = torch.tensor(np.repeat(X.cpu(), [t_eval.size] * X.shape[0], axis=0), device=device,
+        #                       dtype=torch.float32)  # TODO: keep inside torch
+        X_test = X.repeat_interleave(t_eval.size, 0).to(device, torch.float32)
 
         # Cannot make all predictions at once due to memory constraints
         pred_batch = 16382                                                        # Predict in batches of `pred_batch`
@@ -251,9 +260,10 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         return pred, pred_meta_data
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-3)
+        """ For survival model have a different scheduler for the encoder parameters and the task head (DeSurv) params"""
+        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=self.weight_decay)
         lr_scheduler_config = {
-            "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
+            "scheduler": ReduceLROnPlateau(optimizer, verbose=True, factor=0.5),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
             "frequency": 3,                     # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
@@ -267,10 +277,12 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
 def create_desurv(cancers, seq_length, channels,
                   encoder_type="waveLSTM",
-                  pre_trained=None,
-                  hidden_size=256, layers=1, proj_size=0, scale_embed_dim=1, wavelet='haar', recursion_limit=None,
-                  r_hops=1, atn_drop=0.5,
-                  surv_dropout=0.5,
+                  J=None,
+                  r_hops=10,
+                  hidden_size=32,
+                  h_proj=1,
+                  D=1,
+                  weight_decay=0,
                   dir_path="logs", verbose=False, monitor="val_loss",
                   num_epochs=200, gpus=1,
                   validation_hook_batch=None, test_hook_batch=None,
@@ -280,26 +292,27 @@ def create_desurv(cancers, seq_length, channels,
 
     encoder_config = {"seq_length": seq_length,
                       "channels": channels,
-                      "hidden_size": hidden_size,
-                      "scale_embed_dim": scale_embed_dim,
-                      "layers": layers,
-                      "proj_size": proj_size,
-                      "wavelet": wavelet,
-                      "recursion_limit": recursion_limit
+                      "hidden_size": hidden_size,                 # Dimension of cell state
+                      "proj_size": h_proj, # Dimension of hidden cell state
+                      "scale_embed_dim": D, # Dimension of relolution and multi-resolution embeddings
+                      "layers": 1,  # Number of ConvLSTM layers
+                      "kernel_size": 1, # Size of convolutional kernel inside ConvLSTMcell
+                      "wavelet": 'haar',
+                      "recursion_limit": J
                       }
-    attention_config = {"dropout": atn_drop,
+    attention_config = {"dropout_embeddings": 0,
                         "attention-unit": 350,
                         "attention-hops": r_hops,
-                        "penalization_coeff": 0.,
-                        "real_hidden_size": proj_size if proj_size > 0 else hidden_size,  # Encoder's hidden size
+                        "real_hidden_size": h_proj if h_proj > 0 else hidden_size,  # Encoder's hidden size
                         }
-    surv_config = {"dropout": surv_dropout,
-                   "encoder_type": encoder_type,
-                   "pre_trained": pre_trained}
+    surv_config = {"encoder_type": encoder_type,
+                   "diversity_coef": 0.0,
+                   "weight_decay": weight_decay
+                   }
 
     _model = DeSurv(encoder_config=encoder_config,
                     attention_config=attention_config,
-                    config=surv_config)
+                    surv_config=surv_config)
     print(_model)
 
     # Initialize wandb logger
@@ -316,11 +329,10 @@ def create_desurv(cancers, seq_length, channels,
         monitor=monitor,
     )
 
-    # monitor Integrated Negative Binomial LogLikelihood from PerformanceMetrics callback (see below)
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
-        patience=0,
+        patience=1,
         verbose=verbose
     )
 

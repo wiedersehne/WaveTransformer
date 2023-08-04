@@ -24,7 +24,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         self.save_hyperparameters()
         self.encoder = Encoder(**encoder_config)
         self.real_hidden_size = config['real_hidden_size']
-        self.drop = nn.Dropout(config['dropout'])
+        self.drop_hj = nn.Dropout(config['dropout_embeddings'])
         self.ws1 = nn.LazyLinear(config['attention-unit'], bias=False)
         self.ws2 = nn.Linear(config['attention-unit'], config['attention-hops'], bias=False)
         self.init_weights(init_range=0.1)
@@ -54,7 +54,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         hops = self.attention_hops
         compressed_embeddings = hidden.view(-1, size[2])               # [batch_size * num_multiscales, n_hidden]
 
-        hbar = self.activation(self.ws1(self.drop(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
+        hbar = self.activation(self.ws1(self.drop_hj(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
         alphas = self.ws2(hbar).view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention-hops]
         alphas = torch.transpose(alphas, 1, 2).contiguous()            # [batch_size, attention-hops, num_multiscales]
 

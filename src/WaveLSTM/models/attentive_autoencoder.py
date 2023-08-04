@@ -181,7 +181,7 @@ def create_sa_autoencoder(seq_length, channels,
                       "wavelet": wavelet,
                       "recursion_limit": recursion_limit
                       }
-    attention_config = {"dropout": 0.,
+    attention_config = {"dropout_embeddings": 0.,
                         "attention-unit": 350,
                         "attention-hops": r_hops,
                         "real_hidden_size": proj_size if proj_size > 0 else hidden_size,       # Encoder's hidden size

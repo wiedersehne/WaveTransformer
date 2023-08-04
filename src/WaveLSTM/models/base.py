@@ -56,11 +56,12 @@ class WaveletBase(object):
                 Filtered and down-sampled target signal
         """
         assert x.dim() == 3, x.size()
+        pool_inputs = True
 
         # Masked inputs
         masked_inputs = []
         for j in range(self.J):
-            X_j = torch.zeros((x.size(0), x.size(1), self.masked_width), device=device)
+            X_j = torch.zeros((x.size(0), x.size(1), self.masked_width if pool_inputs else x.size(2)), device=device)
             for c in range(x.shape[1]):
                 # Filter bank over channel sequence
                 full_bank = ptwt.wavedec(x[:, c, :], self.wavelet, mode='zero', level=self.max_detail_spaces)
@@ -69,7 +70,7 @@ class WaveletBase(object):
                 # Remove j>J, and in doing this the reconstruction below will be average pooled
                 trunc_bank = masked_bank[:self.J]
                 # Reconstruct source-separated input
-                X_j[:, c, :] = ptwt.waverec(trunc_bank, self.wavelet)
+                X_j[:, c, :] = ptwt.waverec(trunc_bank if pool_inputs else masked_bank, self.wavelet)
 
             masked_inputs.append(X_j)
 

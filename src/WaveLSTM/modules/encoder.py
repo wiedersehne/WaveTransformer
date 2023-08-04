@@ -14,9 +14,16 @@ class Encoder(pl.LightningModule, ABC):
 
     def __init__(self,
                  seq_length, channels, pooled_width, J,
-                 hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128,
+                 hidden_size=256,
+                 layers=1,
+                 proj_size=0,
+                 scale_embed_dim=128,
+                 kernel_size=7,
                  wavelet="haar",
                  recursion_limit=None,   # J
+                 dropout_input=0,
+                 dropout_hidden=0,
+                 dropout_proj=0
                  ):
 
         super().__init__()
@@ -32,7 +39,11 @@ class Encoder(pl.LightningModule, ABC):
                                           masked_input_width=self.masked_width,
                                           J=self.J,
                                           hidden_size=hidden_size, layers=layers, proj_size=proj_size,
-                                          scale_embed_dim=scale_embed_dim
+                                          scale_embed_dim=scale_embed_dim,
+                                          kernel_size=kernel_size,
+                                          dropout_input=dropout_input,
+                                          dropout_hidden=dropout_hidden,
+                                          dropout_proj=dropout_proj
                                           )
 
     def __str__(self):

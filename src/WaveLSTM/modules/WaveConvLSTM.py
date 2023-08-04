@@ -22,7 +22,10 @@ class WaveletConv1dLSTM(nn.Module):
                  layers: int = 1,
                  proj_size: int = 0,
                  scale_embed_dim: int = 128,
-                 dropout=0.5
+                 kernel_size: int = 7,
+                 dropout_input=0,
+                 dropout_hidden=0,
+                 dropout_proj=0
                  ):
         """
         out_features,  number of loci     # TODO: still needed?
@@ -38,6 +41,7 @@ class WaveletConv1dLSTM(nn.Module):
         self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
         self.lstm_layers = layers
         self.embed_dim = scale_embed_dim
+        self.kernel_size=kernel_size
 
         self.channels = channels
         self.masked_input_width = masked_input_width
@@ -45,10 +49,12 @@ class WaveletConv1dLSTM(nn.Module):
         # LSTM
         self.rnn = Conv1dLSTM(input_channels=self.channels,
                               hidden_channels=self.hidden_size,
-                              kernel_size=3,
+                              kernel_size=self.kernel_size,
                               num_layers=self.lstm_layers,
                               proj_size=self.proj_size,
-                              dropout=dropout
+                              dropout_input=dropout_input,
+                              dropout_hidden=dropout_hidden,
+                              dropout_proj=dropout_proj
                               )
 
         # Output layers to map to the embedded space
