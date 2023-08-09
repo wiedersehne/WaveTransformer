@@ -8,7 +8,7 @@ from WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder
 from WaveLSTM.models.DeSurv import create_desurv
 
 
-def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM"):
+def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM", J=5, r_hops=10):
     """
         train:               Train or load from checkpoint
         use_cna:
@@ -17,7 +17,6 @@ def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM"):
 
     features, labels, survival_time, survival_status, days_since_birth, sex = [], [], [], [], [], []
     for t_batch in iter(dm.test_dataloader()):
-        print(t_batch.keys())
         features.append(t_batch["feature"])
         labels.append(t_batch["label"])
         survival_time.append(t_batch["survival_time"])
@@ -30,11 +29,11 @@ def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM"):
                 "survival_status": torch.concat(survival_status, 0),
                 "days_since_birth": torch.concat(days_since_birth, 0),
                 "sex": sex}
+    print(test_all["feature"].shape)
 
-    r_hops = 10
     weight_decay= 0 #1e-5 * 2**r_hops if encoder_type.lower() == "wavelstm" else 0
     model, trainer = create_desurv(dm.label_encoder.classes_, seq_length=dm.W, channels=dm.C,
-                                   J=1, r_hops=r_hops, D=1,
+                                   J=J, r_hops=r_hops, D=1,
                                    encoder_type=encoder_type,
                                    num_epochs=200,
                                    validation_hook_batch=next(iter(dm.val_dataloader())),
@@ -51,12 +50,9 @@ def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM"):
     std[std < 1e-2] = 1
     model.normalize_stats = (mean, std)
 
-    # Standardizing scale for survival time
-    # t_train_max = np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())])
-    # t_test_max = np.max([b["survival_time"].max() for b in iter(dm.test_dataloader())])
-    model.time_scale = 7064   # t_train_max
-    model.max_test_time = 5480      # t_test_max
-    print(f"Norm time {model.time_scale}, {model.max_test_time}")
+    # Standardizing scale for survival time. Chosen empirically then fixed for all runs.
+    model.time_scale = 7064   # np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())])
+    model.max_test_time = 5480      # np.max([b["survival_time"].max() for b in iter(dm.test_dataloader())])
 
     if train:
         trainer.fit(model, datamodule=dm)
@@ -80,5 +76,7 @@ if __name__ == '__main__':
     # print(np.unique(dm.data_frame["cancer_type"]))
     print(dm.C)
 
-    # pre_train_encoder(dm, train=True)
-    run_wavelet_desurv(dm, cancer_types, train=True, encoder_type="wavelstm")
+    for j in [3]:
+        for r in [1]:
+            print(f"J={j}, r={r}")
+            run_wavelet_desurv(dm, cancer_types, J=j, r_hops=r, train=True, encoder_type="wavelstm")

@@ -336,7 +336,9 @@ def create_desurv(cancers, seq_length, channels,
         verbose=verbose
     )
 
+    # TODO: add this to the datamodule to avoid potential bugs
     label_dictionary = {key: val for key, val in zip([i for i in range(len(cancers))], cancers)}
+    print(label_dictionary)
     surv_metrics = survival.PerformanceMetrics(
         val_samples=validation_hook_batch,
         test_samples=test_hook_batch
