@@ -39,7 +39,7 @@ def run_wavelet_desurv(dm, cancers, train=True, encoder_type="waveLSTM", J=5, r_
                                    validation_hook_batch=next(iter(dm.val_dataloader())),
                                    test_hook_batch=test_all,
                                    project="WaveLSTM-surv",
-                                   run_id=f"ASCAT-attentive-deSurv",
+                                   run_id=f"deSurv_J{J}R{r_hops}",
                                    verbose=True,
                                    )
 
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     # print(np.unique(dm.data_frame["cancer_type"]))
     print(dm.C)
 
-    for j in [3]:
+    for j in [1]:
         for r in [1]:
             print(f"J={j}, r={r}")
             run_wavelet_desurv(dm, cancer_types, J=j, r_hops=r, train=True, encoder_type="wavelstm")
