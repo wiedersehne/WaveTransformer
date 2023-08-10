@@ -6,7 +6,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class WaveletConv1dLSTM(nn.Module):
+    """
 
+    """
     def __str__(self):
         s = '\nWaveletLSTM'
         s += f'\n\t Number of layers {self.lstm_layers}'
@@ -23,9 +25,9 @@ class WaveletConv1dLSTM(nn.Module):
                  proj_size: int = 0,
                  scale_embed_dim: int = 128,
                  kernel_size: int = 7,
-                 dropout_input=0,
-                 dropout_hidden=0,
-                 dropout_proj=0
+                 dropout_input=0, # TODO: re
+                 dropout_hidden=0,   # TODO: remove
+                 dropout_proj=0      # TODO: remove
                  ):
         """
         out_features,  number of loci     # TODO: still needed?
@@ -52,9 +54,7 @@ class WaveletConv1dLSTM(nn.Module):
                               kernel_size=self.kernel_size,
                               num_layers=self.lstm_layers,
                               proj_size=self.proj_size,
-                              dropout_input=dropout_input,
-                              dropout_hidden=dropout_hidden,
-                              dropout_proj=dropout_proj
+                              dropout=dropout_input,
                               )
 
         # Output layers to map to the embedded space

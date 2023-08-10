@@ -287,8 +287,10 @@ def create_desurv(cancers, seq_length, channels,
                   num_epochs=200, gpus=1,
                   validation_hook_batch=None, test_hook_batch=None,
                   project='WaveLSTM-aeDeSurv', run_id="null",
-                  outfile="logs/desurv-output.pkl",
+                  # outfile="logs/desurv-output.pkl",
                   ):
+
+    outfile = f"logs/desurv_J{J}R{r_hops}.pkl"
 
     encoder_config = {"seq_length": seq_length,
                       "channels": channels,
