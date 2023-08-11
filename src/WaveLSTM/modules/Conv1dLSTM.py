@@ -1,83 +1,93 @@
 import torch.nn as nn
 import torch
 class Conv1dLSTMCell(nn.Module):
+    r"""A convolutional LSTM cell, with optional hidden state projection.
+
+    For an element :math:`\hat{X}_j` from a sequence of channelised signals, this cell computes
+    the following set of convolutional operations
+
+    .. math::
+        \begin{array}{ll} \\
+            i_j &= \sigma(W_{ii} * \hat{X}_j + b_{ii} + W_{hi} * \H_{j-1} + b_{hi}) \\
+            f_j &= \sigma(W_{if} * \hat{X}_j + b_{if} + W_{hf} * \H_{j-1} + b_{hf}) \\
+            g_j &= \tanh(W_{ig} * \hat{X}_j + b_{ig} + W_{hg} * \H_{j-1} + b_{hg}) \\
+            o_j &= \sigma(W_{io} * \hat{X}_j + b_{io} + W_{ho} * \H_{j-1} + b_{ho}) \\
+            C_j &= f_j \odot C_{j-1} + i_j \odot g_j \\
+            H_j &= o_j \odot \tanh(C_j),
+        \end{array}
+
+    where :math:`H_j` is the hidden state tensor at resolution `j`, :math:`C_j` is the cell
+    state tensor at resolution `j`, :math:`\hat{X}_j` is the input at resolution `j`, :math:`H_{j-1}`
+    is the hidden state tensor of the layer at resolution `j-1` or the initial hidden
+    state tensor at resolution `0`, and :math:`i_j`, :math:`f_j`, :math:`g_j`,
+    :math:`o_j` are the input, forget, cell, and output gates, respectively.
+    :math:`\sigma` is the sigmoid function, and :math:`\odot` is the Hadamard product.
+
+    If ``proj_size > 0`` is specified, Conv1dLSTM with projections will be used. This changes
+    the LSTM cell in the following way. First, the number of channels of :math:`H_j` will be changed from
+    ``hidden_channels`` to ``proj_size`` (dimensions of :math:`W_{hi}` will be changed accordingly).
+    Second, the output hidden state tensor of each layer will be multiplied by a learnable projection
+    matrix: :math: `H_j = W_{oh} * H_j`. Note that as a consequence of this, the output
+    of LSTM network will be of different shape as well.
+
+    Args:
+        input_channels (int):
+            The number of channels of the input data.
+        hidden_channels (int):
+            The number of channels of the cell state. Default ``128``.
+        kernel_size (int):
+            Size of the convolutional kernel. Default ``3``.
+        bias (bool):
+            Whether to add the bias to convolutions. Default ``True``.
+        proj_size (int):
+            If ``>0``, will use ConvLSTM with hidden state projections with corresponding number of channels.
+             Default ``0``.
+        dropout (float):
+            If non-zero, introduces a Dropout layer on the outputs of the Conv1dLSTM cell,
+             with dropout probability equal to dropout. Default: 0
+    """
+
+    def __str__(self):
+        s = f'\nConv1dLSTMCell'
+        s += f'\n\t Input channels {self.input_channels}'
+        s += f'\n\t Cell state size {self.hidden_channels}, hidden state size {self.real_hidden_channels}'
+        s += (f'\n\t Convolution: '
+              f'\n\t\t kernel_size: {self.kernel_size}, padding: {self.padding}, bias: {self.bias}')
+        s += (f'\n\t Recurrent projection convolution: '
+              f'\n\t\t kernel_size: {self.kernel_size}, padding: {self.padding}, bias: {self.bias}')
+        s += f'\n\t Dropout probability {self.dropout}'
+        return s
 
     def __init__(self,
                  input_channels : int,
-                 hidden_size: int = 128,
+                 hidden_channels: int = 128,
                  kernel_size: int = 7,
                  bias: bool = True,
                  proj_size: int = 0,
                  dropout: float = 0.,
                  ):
-        r"""
-        A convolutional LSTM cell, with optional hidden state projection.
-
-        For an element :math:`\hat{X}_j` from a sequence of channelised signals, this cell computes
-        the following set of convolutional operations
-
-        .. math::
-            \begin{array}{ll} \\
-                i_j &= \sigma(W_{ii} * \hat{X}_j + b_{ii} + W_{hi} * \H_{j-1} + b_{hi}) \\
-                f_j &= \sigma(W_{if} * \hat{X}_j + b_{if} + W_{hf} * \H_{j-1} + b_{hf}) \\
-                g_j &= \tanh(W_{ig} * \hat{X}_j + b_{ig} + W_{hg} * \H_{j-1} + b_{hg}) \\
-                o_j &= \sigma(W_{io} * \hat{X}_j + b_{io} + W_{ho} * \H_{j-1} + b_{ho}) \\
-                C_j &= f_j \odot C_{j-1} + i_j \odot g_j \\
-                H_j &= o_j \odot \tanh(C_j),
-            \end{array}
-
-        where :math:`H_j` is the hidden state tensor at resolution `j`, :math:`C_j` is the cell
-        state tensor at resolution `j`, :math:`\hat{X}_j` is the input at resolution `j`, :math:`H_{j-1}`
-        is the hidden state tensor of the layer at resolution `j-1` or the initial hidden
-        state tensor at resolution `0`, and :math:`i_j`, :math:`f_j`, :math:`g_j`,
-        :math:`o_j` are the input, forget, cell, and output gates, respectively.
-        :math:`\sigma` is the sigmoid function, and :math:`\odot` is the Hadamard product.
-
-        If ``proj_size > 0`` is specified, Conv1dLSTM with projections will be used. This changes
-        the LSTM cell in the following way. First, the number of channels of :math:`H_j` will be changed from
-        ``hidden_size`` to ``proj_size`` (dimensions of :math:`W_{hi}` will be changed accordingly).
-        Second, the output hidden state tensor of each layer will be multiplied by a learnable projection
-        matrix: :math: `H_j = W_{oh} * H_j`. Note that as a consequence of this, the output
-        of LSTM network will be of different shape as well.
-
-        Args:
-            input_channels (int):
-                The number of channels of the input data.
-            hidden_size (int):
-                The number of channels of the cell state. Default ``128``.
-            kernel_size (int):
-                Size of the convolutional kernel. Default ``3``.
-            bias (bool):
-                Whether to add the bias to convolutions. Default ``True``.
-            proj_size (int):
-                If ``>0``, will use ConvLSTM with hidden state projections with corresponding number of channels.
-                 Default ``0``.
-            dropout (float):
-                If non-zero, introduces a Dropout layer on the outputs of the Conv1dLSTM cell,
-                 with dropout probability equal to dropout. Default: 0
-        """
 
         super(Conv1dLSTMCell, self).__init__()
 
         self.input_channels = input_channels
         self.proj_size = proj_size
-        self.hidden_size = hidden_size
-        self.real_hidden_size = proj_size if proj_size > 0 else hidden_size
+        self.hidden_channels = hidden_channels
+        self.real_hidden_channels = proj_size if proj_size > 0 else hidden_channels
 
         self.kernel_size = kernel_size
         self.padding = kernel_size // 2
         self.bias = bias
 
         self.dropout = nn.Dropout(dropout)
-        self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_size,
-                              out_channels=4 * self.hidden_size,
+        self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_channels,
+                              out_channels=4 * self.hidden_channels,
                               kernel_size=self.kernel_size,
                               padding=self.padding,
                               bias=self.bias)
         if self.proj_size > 0:
             self.recurrent_output = nn.Sequential(
-                nn.Conv1d(in_channels=self.hidden_size,
-                          out_channels=self.real_hidden_size,
+                nn.Conv1d(in_channels=self.hidden_channels,
+                          out_channels=self.real_hidden_channels,
                           kernel_size=self.kernel_size,
                           padding=self.padding,
                           bias=self.bias),
@@ -89,14 +99,12 @@ class Conv1dLSTMCell(nn.Module):
                 input_tensor,
                 state: tuple):
         """
-        input_tensor: (N, Channels, Width)
         """
-        hidden, cell = state                                 # (N, hidden_size, width)
-        # input_tensor = self.dropout(input_tensor)
+        hidden, cell = state                                 # (N, real_hidden_channels, width), (N, hidden_channels, width)
 
-        combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_size, width)
-        combined_conv = self.conv(combined)                  # (N, 4 * hidden_size, width)
-        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_size, dim=1)  # (N, hidden_size, width)
+        combined = torch.cat([input_tensor, hidden], dim=1)  # (N, Channels + real_hidden_channels, width)
+        combined_conv = self.conv(combined)                  # (N, 4 * hidden_channels, width)
+        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_channels, dim=1)  # (N, hidden_channels, width)
 
         i = torch.sigmoid(cc_i)
         f = torch.sigmoid(cc_f)
@@ -107,7 +115,7 @@ class Conv1dLSTMCell(nn.Module):
         h_next = o * torch.tanh(c_next)
 
         if self.proj_size > 0:
-            h_next = self.recurrent_output(h_next)                       # (N, proj_size, width)
+            h_next = self.recurrent_output(h_next)                       # (N, real_hidden_channels, width)
 
         h_next = self.dropout(h_next)
         c_next = self.dropout(c_next)
@@ -145,7 +153,7 @@ class Conv1dLSTM(nn.Module):
 
     If ``proj_size > 0`` is specified, Conv1dLSTM with projections will be used. This changes
     the LSTM cell in the following way. First, the number of channels of :math:`H_j` will be changed from
-    ``hidden_size`` to ``proj_size`` (dimensions of :math:`W_{hi}` will be changed accordingly).
+    ``hidden_channels`` to ``proj_size`` (dimensions of :math:`W_{hi}` will be changed accordingly).
     Second, the output hidden state tensor of each layer will be multiplied by a learnable projection
     matrix: :math: `H_j = W_{oh} * H_j`. Note that as a consequence of this, the output
     of LSTM network will be of different shape as well.
@@ -153,7 +161,7 @@ class Conv1dLSTM(nn.Module):
     Args:
         input_channels (int):
             The number of channels of the input data.
-        hidden_size (int):
+        hidden_channels (int):
             The number of channels of the cell state. Default ``128``.
         kernel_size (int):
             Size of the convolutional kernel. Default ``3``.
@@ -197,10 +205,15 @@ class Conv1dLSTM(nn.Module):
     Examples::
 
         >>> x = torch.rand((32, 10, 64, 128))
-        >>> convlstm = Conv1dLSTM(64, 16, 3, 1, True, True, False)
-        >>> _, last_states = convlstm(x)
-        >>> h = last_states[0][0]  # 0 for layer index, 0 for h index
-        """
+        >>> convlstm = Conv1dLSTM(64, 16, kernel_size=3, num_layers=1, bias=True, proj_size=0, dropout=0)
+        >>> output, (hn, hc)  = convlstm(x)
+    """
+
+    def __str__(self):
+        s = f'\nConv1dLSTM (layers={self.num_layers})'
+        for _cell in self.cell_list:
+            s += str(_cell)
+        return s
     def __init__(self,
                  input_channels,
                  hidden_channels,
@@ -224,7 +237,7 @@ class Conv1dLSTM(nn.Module):
         hidden_to_input_list = []
         for l in range(self.num_layers):
             cell_list.append(Conv1dLSTMCell(input_channels=self.input_channels if l == 0 else self.real_hidden_channels,
-                                            hidden_size=self.hidden_channels,
+                                            hidden_channels=self.hidden_channels,
                                             kernel_size=self.kernel_size,
                                             bias=self.bias,
                                             proj_size=proj_size,
@@ -258,7 +271,7 @@ class Conv1dLSTM(nn.Module):
             # after iterating over layers
             output.append(hidden[-1])
 
-        output = torch.stack(output, dim=1)         # (N, J, H_proj, Signal length)
+        output = torch.stack(output, dim=1)         # (N, J, real_hidden_channels, Signal length)
 
         return output, (hidden, cell)
 
