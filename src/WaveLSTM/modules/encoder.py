@@ -11,9 +11,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Encoder(pl.LightningModule, ABC):
+    r"""
+    
+    """
 
     def __init__(self,
-                 seq_length, channels, pooled_width, J,
+                 seq_length,
+                 channels,
+                 pooled_width,
+                 J,
                  hidden_size=256,
                  layers=1,
                  proj_size=0,
@@ -34,16 +40,19 @@ class Encoder(pl.LightningModule, ABC):
         self.masked_width = pooled_width
         self.J = J
 
+        self.real_hidden_channels = proj_size if proj_size > 0 else hidden_channels
+        self.hidden_channels = hidden_size
+        self.layers = layers
+
         # recurrent network
-        self.wave_rnn = WaveletConv1dLSTM(out_features=seq_length, channels=channels,
-                                          masked_input_width=self.masked_width,
+        self.wave_rnn = WaveletConv1dLSTM(input_channels=channels,
+                                          hidden_channels=hidden_size,
                                           J=self.J,
-                                          hidden_size=hidden_size, layers=layers, proj_size=proj_size,
-                                          scale_embed_dim=scale_embed_dim,
+                                          layers=layers,
+                                          proj_size=proj_size,
                                           kernel_size=kernel_size,
-                                          dropout_input=dropout_input,
-                                          dropout_hidden=dropout_hidden,
-                                          dropout_proj=dropout_proj
+                                          dropout=dropout_input,
+                                          resolution_embed_size=scale_embed_dim,
                                           )
 
     def __str__(self):
@@ -67,7 +76,7 @@ class Encoder(pl.LightningModule, ABC):
         assert np.all([xj.shape[2] == self.masked_width for xj in masked_inputs])
 
         # Initialise hidden and cell states
-        hidden_state = self.wave_rnn.init_states(masked_inputs[0].size(0))
+        hidden_state = self.init_states(masked_inputs[0].size(0))
 
         # Loop over multiscales
         hidden_embedding = []
@@ -78,4 +87,16 @@ class Encoder(pl.LightningModule, ABC):
 
         return hidden_embedding, meta_data
 
+    def init_states(self, batch_size):
+        """
+        Initial hidden and cell tensor states. Initialised separately for each layer.
+        """
+        return (torch.zeros((self.layers,
+                             batch_size,
+                             self.real_hidden_channels,
+                             self.masked_width), device=device),
+                torch.zeros((self.layers,
+                             batch_size,
+                             self.hidden_channels,
+                             self.masked_width), device=device))
 

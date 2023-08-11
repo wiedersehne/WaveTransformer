@@ -1,5 +1,7 @@
 import torch.nn as nn
 import torch
+from typing import Optional
+
 class Conv1dLSTMCell(nn.Module):
     r"""A convolutional LSTM cell, with optional hidden state projection.
 
@@ -33,6 +35,7 @@ class Conv1dLSTMCell(nn.Module):
     Args:
         input_channels (int):
             The number of channels of the input data.
+    Kwargs:
         hidden_channels (int):
             The number of channels of the cell state. Default ``128``.
         kernel_size (int):
@@ -42,7 +45,7 @@ class Conv1dLSTMCell(nn.Module):
         proj_size (int):
             If ``>0``, will use ConvLSTM with hidden state projections with corresponding number of channels.
              Default ``0``.
-        dropout (float):
+        dropout (Optional: float):
             If non-zero, introduces a Dropout layer on the outputs of the Conv1dLSTM cell,
              with dropout probability equal to dropout. Default: 0
     """
@@ -64,7 +67,7 @@ class Conv1dLSTMCell(nn.Module):
                  kernel_size: int = 7,
                  bias: bool = True,
                  proj_size: int = 0,
-                 dropout: float = 0.,
+                 dropout: Optional[float] = None,
                  ):
 
         super(Conv1dLSTMCell, self).__init__()
@@ -78,7 +81,7 @@ class Conv1dLSTMCell(nn.Module):
         self.padding = kernel_size // 2
         self.bias = bias
 
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) if dropout is not None else None
         self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_channels,
                               out_channels=4 * self.hidden_channels,
                               kernel_size=self.kernel_size,
@@ -117,8 +120,9 @@ class Conv1dLSTMCell(nn.Module):
         if self.proj_size > 0:
             h_next = self.recurrent_output(h_next)                       # (N, real_hidden_channels, width)
 
-        h_next = self.dropout(h_next)
-        c_next = self.dropout(c_next)
+        if self.dropout is not None:
+            h_next = self.dropout(h_next)
+            c_next = self.dropout(c_next)
 
         return h_next, c_next
 
@@ -126,7 +130,7 @@ class Conv1dLSTMCell(nn.Module):
 class Conv1dLSTM(nn.Module):
     r"""Applies a multi-layer convolutional long short-term memory (LSTM) RNN to an input sequence.
 
-    For each element in the input sequence :math:`\{\hat{X}_j\}_{j=1}^J`, each layer  computes
+    For each element in the input sequence :math:`\{\hat{X}_j^t\}_{t=1}^T`, each layer computes
     the following set of convolutional operations
 
     .. math::
@@ -161,6 +165,7 @@ class Conv1dLSTM(nn.Module):
     Args:
         input_channels (int):
             The number of channels of the input data.
+    Kwargs:
         hidden_channels (int):
             The number of channels of the cell state. Default ``128``.
         kernel_size (int):
@@ -169,22 +174,22 @@ class Conv1dLSTM(nn.Module):
             Whether to add the bias to convolutions. Default ``True``.
         proj_size (int):
             If ``>0``, will use ConvLSTM with hidden state projections with corresponding number of channels. Default ``0``.
-        drropout (float):
+        dropout (Optional: float):
             If non-zero, introduces a Dropout layer on the outputs of the Conv1dLSTM cell except the last layer,
              with dropout probability equal to dropout. Default: 0
 
 
     Inputs: input_tensor, (h_0, c_0)
-        * **input_tensor**: tensor of shape :math:`(N, J, H_{in}, W)`
+        * **input_tensor**: tensor of shape :math:`(N, time_steps, H_{in}, W)`
         * **h_0**: tensor of shape :math:`(\text{num\_layers}, N, H_{proj}, W)`
         * **c_0**: tensor of shape :math:`(\text{num\_layers}, N, H_{cell}, W)`
 
     Outputs: output, (h_n, c_n)
-        * **output**: tensor of shape :math:`(N, J, H_{proj}, W)` containing the hidden state tensor features from the
+        * **output**: tensor of shape :math:`(N, time_steps, H_{proj}, W)` containing the hidden state tensor features from the
          last layer of the LSTM, for each resolution
-        * **h_n**: List of L tensors of shape :math:`(N, H_{proj}, W)` containing the final (of J) hidden state
+        * **h_n**: List of L tensors of shape :math:`(N, H_{proj}, W)` containing the final ``time_step`` hidden state
          tensor for each element in the sequence
-        * **c_n**: List of L tensor of shape :math:`(N, H_{cell}, W)` containing the final (of J) cell state tensor
+        * **c_n**: List of L tensor of shape :math:`(N, H_{cell}, W)` containing the final ``time_step`` cell state tensor
          for each element in the sequence
 
         where:
@@ -192,7 +197,7 @@ class Conv1dLSTM(nn.Module):
         .. math::
             \begin{aligned}
                 N ={} & \text{batch size} \\
-                J ={} & \text{sequence length} \\
+                T ={} & \text{time_steps} \\
                 W ={} & \text{input\_size (input signal length)} \\
                 H_{in} ={} & \text{input\_channels} \\
                 H_{cell} ={} & \text{hidden\_size} \\
@@ -216,12 +221,12 @@ class Conv1dLSTM(nn.Module):
         return s
     def __init__(self,
                  input_channels,
-                 hidden_channels,
+                 hidden_channels: int = 128,
                  kernel_size :int = 7,
                  num_layers: int = 1,
                  bias : bool =True,
                  proj_size:int =0,
-                 dropout: float = 0.,
+                 dropout: Optional[float] = None,
                  ):
 
         super(Conv1dLSTM, self).__init__()
@@ -236,22 +241,25 @@ class Conv1dLSTM(nn.Module):
         cell_list = []
         hidden_to_input_list = []
         for l in range(self.num_layers):
+            if dropout is not None:
+                dropout = dropout if l<self.num_layers-1 else 0
             cell_list.append(Conv1dLSTMCell(input_channels=self.input_channels if l == 0 else self.real_hidden_channels,
                                             hidden_channels=self.hidden_channels,
                                             kernel_size=self.kernel_size,
                                             bias=self.bias,
                                             proj_size=proj_size,
-                                            dropout=dropout if l<self.num_layers-1 else 0,
+                                            dropout=dropout,
                                             ))
         self.cell_list = nn.ModuleList(cell_list)
 
     def forward(self, input_tensor, hidden_state):
         """
+        input_tensor (torch.tensor): [batch size, time_steps, input_channels, signal_length] or [batch size, input_channels, signal_length]
+            A resolution component, optionally temporal
         """
 
         if input_tensor.dim() == 3:
-            input_tensor = input_tensor.unsqueeze(1)                 # (b, t, c, signal_length)
-        b, seq_len, _, sig_len = input_tensor.size()
+            input_tensor = input_tensor.unsqueeze(1)                 # (batch_size, time_steps, input_channels, signal_length)
 
         hidden, cell = hidden_state                               # (layers, N, H_out, signal length)
 
@@ -268,10 +276,10 @@ class Conv1dLSTM(nn.Module):
                 cell_last.append(c_next)
             hidden, cell = hidden_last, cell_last          # (num_layers, N, H_out, Signal length)
 
-            # after iterating over layers
+            # after iterating over layers, take top layer
             output.append(hidden[-1])
 
-        output = torch.stack(output, dim=1)         # (N, J, real_hidden_channels, Signal length)
+        output = torch.stack(output, dim=1)         # (N, time_steps, real_hidden_channels, Signal length)
 
         return output, (hidden, cell)
 
