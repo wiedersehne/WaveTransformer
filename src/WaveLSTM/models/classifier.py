@@ -14,7 +14,7 @@ import numpy as np
 import ptwt
 import pywt
 # Modules
-from WaveLSTM.models.base import WaveletBase
+from WaveLSTM.models.base import WaveletBase as SourceSeparation
 from WaveLSTM.modules.self_attentive_encoder import SelfAttentiveEncoder
 # Callbacks
 from WaveLSTM.custom_callbacks import waveLSTM
@@ -23,35 +23,33 @@ from WaveLSTM.custom_callbacks import attention
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class AttentiveClassifier(pl.LightningModule, ABC, WaveletBase):
+class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
 
-    def __init__(self,
-                 encoder_config,
-                 attention_config,
-                 config):
+    def __init__(self, input_size,  input_channels,                    num_classes, config ):
+
         super().__init__()
-        WaveletBase.__init__(self,
-                             seq_length=encoder_config["seq_length"],
-                             recursion_limit=encoder_config["recursion_limit"],
-                             wavelet=encoder_config["wavelet"])
-
         self.save_hyperparameters()
-        self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
 
-        # Encoder
-        encoder_config["J"] = self.J
-        encoder_config["pooled_width"] = self.masked_width
-        self.a_encoder = SelfAttentiveEncoder(encoder_config=encoder_config,
-                                              config=attention_config)
+        # Data
+        self.input_channels = input_channels
+        self.input_size = input_size
+
+        SourceSeparation.__init__(self,
+                             input_size=self.input_size,
+                             recursion_limit=config.encoder.waveLSTM.J,
+                             wavelet=config.encoder.waveLSTM.wavelet)
+        self.encoder = SelfAttentiveEncoder(input_size=self.masked_width,
+                                            input_channels=self.input_channels,
+                                            D=config.encoder.base.D,
+                                            **config.attention, **config.encoder.waveLSTM,
+                                            )
 
         # Classifier network
-        self.clf_net = nn.Sequential(nn.LazyLinear(config['nfc']),
+        self.clf_net = nn.Sequential(nn.LazyLinear(config.classifier.nfc),
                                      nn.Tanh(),
-                                     nn.Dropout(config['dropout']),
-                                     nn.LazyLinear(config['nfc']),
+                                     nn.LazyLinear(config.classifier.nfc),
                                      nn.Tanh(),
-                                     nn.Dropout(config['dropout']),
-                                     nn.LazyLinear(len(config['classes'])))
+                                     nn.LazyLinear(num_classes))
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x: torch.tensor):
@@ -67,11 +65,10 @@ class AttentiveClassifier(pl.LightningModule, ABC, WaveletBase):
             'masked_targets': masked_targets,
         }
 
-
         # Attentively encode
-        output, meta_data = self.a_encoder(scaled_masked_inputs, meta_data)
-        meta_data.update({"M": output})                                 # [batch_size, attention-hops, scale_embed_dim]
-        output = output.view(output.size(0), -1)                        # [batch_size, attention-hops * scale_embed_dim]
+        output, meta_data = self.encoder(scaled_masked_inputs, meta_data)
+        meta_data.update({"M": output})                                 # [batch_size, attention-hops, resolution_embed_size]
+        output = output.view(output.size(0), -1)                        # [batch_size, attention-hops * resolution_embed_size]
 
         # Decode
         pred = self.clf_net(output)
@@ -88,7 +85,7 @@ class AttentiveClassifier(pl.LightningModule, ABC, WaveletBase):
 
         # Calculate penalization (promotes diversity in hops)
         # atn_t = torch.transpose(atn, 1, 2).contiguous()
-        # eye = torch.stack([torch.eye(self.a_encoder.attention_hops) for _ in range(bsz)], dim=0)
+        # eye = torch.stack([torch.eye(self.encoder.attention_hops) for _ in range(bsz)], dim=0)
         # p = torch.norm(torch.bmm(atn, atn_t) - eye.to(device))
         # penalty = self.a_encoder.attention_pen * p
 
@@ -140,46 +137,23 @@ class AttentiveClassifier(pl.LightningModule, ABC, WaveletBase):
 
 
 
-def create_classifier(classes, seq_length, channels,
-                      hidden_size=256, layers=1, proj_size=0, scale_embed_dim=128,
-                      r_hops=1, clf_nfc=128,
-                      wavelet='haar',
-                      recursion_limit=None,
-                      dir_path="logs", verbose=False, monitor="val_loss",
-                      num_epochs=100, gpus=1,
-                      validation_hook_batch=None, test_hook_batch=None,
-                      project='WaveLSTM-clf', run_id="null",
-                      outfile="logs/clf-output.pkl"
+def create_classifier(classes, data_module, test_data, val_data, cfg,
+                      dir_path="logs",
+                      gpus=1,
                       ):
 
-    encoder_config = {"seq_length": seq_length,
-                      "channels": channels,
-                      "hidden_size": hidden_size,
-                      "scale_embed_dim": scale_embed_dim,
-                      "layers": layers,
-                      "proj_size": proj_size,
-                      "wavelet": wavelet,
-                      "recursion_limit": recursion_limit
-                      }
-    attention_config = {"dropout_embeddings": 0.0,
-                        "attention-unit": 350,
-                        "attention-hops": r_hops,
-                        "real_hidden_size": proj_size if proj_size > 0 else hidden_size,       # Encoder's hidden size
-                        }
-    clf_decoder_config = {"dropout": 0.0,
-                          "nfc": clf_nfc,                            # hidden layer size for MLP in the classifier
-                          "classes": classes,                   # number of class for the last step of classification
-                          }
+    # Data parameters
+    labels = classes
+    W=data_module.W               # Signal length
+    C=data_module.C             # Input channels
 
-    _model = AttentiveClassifier(encoder_config=encoder_config,
-                                 attention_config=attention_config,
-                                 config=clf_decoder_config
-                                 )
-    print(_model)
+    _model = AttentiveClassifier(input_size=W, input_channels=C, num_classes=len(classes), config=cfg)
+    if cfg.experiment.verbose:
+        print(_model)
 
     # Initialize wandb logger
-    wandb_logger = WandbLogger(project=project,
-                               name=run_id,
+    wandb_logger = WandbLogger(project=cfg.experiment.project_name,
+                               name=cfg.experiment.run_id,
                                job_type='train',
                                save_dir=dir_path
                                )
@@ -187,40 +161,40 @@ def create_classifier(classes, seq_length, channels,
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=dir_path + "/checkpoints",
-        filename=run_id,
-        verbose=verbose,
-        monitor=monitor,
+        filename=cfg.experiment.run_id,
+        verbose=cfg.experiment.verbose,
+        monitor="val_loss",
     )
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
         patience=10,
-        verbose=verbose
+        verbose=cfg.experiment.verbose,
     )
 
     label_dictionary = {key: val for key, val in zip([i for i in range(len(classes))], classes)}
 
     viz_embedding_callback = waveLSTM.ResolutionEmbedding(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
+        val_samples=val_data,
+        test_samples=test_data,
         label_dictionary=label_dictionary
     )
 
     viz_multi_res_embed = attention.MultiResolutionEmbedding(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
+        val_samples=val_data,
+        test_samples=test_data,
         label_dictionary=label_dictionary
     )
 
     viz_attention = attention.Attention(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch
+        val_samples=val_data,
+        test_samples=test_data
     )
 
     save_output = waveLSTM.SaveOutput(
-        test_samples=test_hook_batch,
-        file_path=outfile
+        test_samples=test_data,
+        file_path=cfg.experiment.save_file
     )
 
     callbacks = [checkpoint_callback,
@@ -234,10 +208,10 @@ def create_classifier(classes, seq_length, channels,
     _trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=callbacks,
-        max_epochs=num_epochs,
-        check_val_every_n_epoch=2,
+        max_epochs=cfg.experiment.num_epochs,
+        log_every_n_steps=5,
+    check_val_every_n_epoch=2,
         gpus=gpus,
-        log_every_n_steps=5
     )
 
     return _model, _trainer

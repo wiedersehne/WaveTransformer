@@ -1,0 +1,42 @@
+data:
+  batch_size: 32
+  chr_length: 256
+  stack: False
+
+experiment:
+  project_name: "WaveLSTM-attentive-autoencoder"
+  num_epochs: 75
+  run_id: clonal_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}    # TODO: generalise this to benchmarks
+  save_file: logs/${experiment.run_id}.pkl
+  train: True
+  verbose: True
+
+attention:
+  r_hops: 1
+  attention_unit: 350
+
+encoder:
+  # Shared parameters
+  base:
+    D: 3
+    method: waveLSTM
+  # Method specific parameters
+  waveLSTM:
+    wavelet: haar
+    J: 4
+    layers: 1
+    hidden_channels: 256
+    proj_size: 64
+
+decoder:
+  base:
+    method: rccae
+  rccae:
+
+  fc:
+
+
+
+
+
+

@@ -1,27 +1,32 @@
+import hydra
+from omegaconf import DictConfig, OmegaConf
 from SignalTransformData.data_modules.simulated import SinusoidalDataModule
 from demo_config import get_demo_config
 from WaveLSTM.models.classifier import create_classifier
 import torch
 
 
-def run_sinusoidal_example():
+def make_dataloaders(cfg_data):
+    # Load data
+    dm = SinusoidalDataModule(get_demo_config(), **cfg_data)
+    return dm, next(iter(dm.val_dataloader())), next(iter(dm.test_dataloader()))
+@hydra.main(version_base=None, config_path="confs", config_name="classifier_config")
+def run_sinusoidal_example(cfg : DictConfig):
+    """
+    """
+    # print(OmegaConf.to_yaml(cfg))
 
-    # Load data and filter for only the cases of interest
-    dm = SinusoidalDataModule(get_demo_config(), samples=2000, batch_size=256, sig_length=512)
-    print(dm)
+    #################
+    # Make dataloader
+    #################
+    dm, val_data, test_data = make_dataloaders(cfg.data)
+    dm.W =cfg.data.sig_length
+    dm.C = 2
+    print(f"width {dm.W}, channels {dm.C}")
 
     # Create model
     model, trainer = create_classifier(classes=[f"Class {i}" for i in range(1, 7)],
-                                       seq_length=512, channels=2,
-                                       hidden_size=128, layers=1, proj_size=0, scale_embed_dim=10,
-                                       # clf_nfc=64,
-                                       recursion_limit=7,
-                                       validation_hook_batch=next(iter(dm.val_dataloader())),
-                                       test_hook_batch=next(iter(dm.test_dataloader())),
-                                       project="WaveLSTM-demo",
-                                       run_id=f"demo-attentive-clf",
-                                       )
-
+                                       data_module=dm, test_data=test_data, val_data=val_data, cfg=cfg)
     # Normalizing stats
     features = torch.concat([batch["feature"] for batch in dm.train_dataloader()], 0)
     model.normalize_stats = (torch.mean(features, 0), torch.std(features, 0))
@@ -30,7 +35,7 @@ def run_sinusoidal_example():
         trainer.fit(model, datamodule=dm)
         print(f"best checkpoint: {trainer.checkpoint_callback.best_model_path}")
     else:
-        model = model.load_from_checkpoint(trainer.checkpoint_callback.dirpath + "/demo_attentive_classifier.ckpt")
+        model = model.load_from_checkpoint(trainer.checkpoint_callback.dirpath + f"/{cfg.experiment.run_id}.ckpt")
 
     # Test model
     trainer.test(model, dataloaders=dm.test_dataloader())

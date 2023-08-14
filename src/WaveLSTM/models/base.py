@@ -18,8 +18,8 @@ class WaveletBase(object):
     def normalize_stats(self, stats):
         for stat in stats:
             assert stat.dim() == 2
-            assert stat.size(0) == self.channels
-            assert stat.size(1) == self.seq_length
+            assert stat.size(0) == self.input_channels
+            assert stat.size(1) == self.input_size
         self.mu_features = stats[0].to(device)
         self.std_features = stats[1].to(device)
 
@@ -101,19 +101,20 @@ class WaveletBase(object):
 
         return masked_inputs, masked_targets
 
-    def __init__(self, seq_length, recursion_limit=None, wavelet="haar"):
+    def __init__(self, input_size, recursion_limit=None, wavelet="haar"):
         self.mu_features = None
         self.std_features = None
         self.wavelet = wavelet
+        self.input_size = input_size
 
         # Wavelet input sequence
         # # Calculate recursion depth J
-        self.max_detail_spaces = pywt.dwt_max_level(seq_length, wavelet)
+        self.max_detail_spaces = pywt.dwt_max_level(self.input_size, wavelet)
         self.J = self.max_detail_spaces + 1 if recursion_limit is None \
             else np.min((recursion_limit, self.max_detail_spaces + 1))
 
         # Get the vector space dimension of each alpha_j
-        _bank = pywt.wavedec(np.zeros((1, 1, seq_length)), self.wavelet, level=self.max_detail_spaces)
+        _bank = pywt.wavedec(np.zeros((1, 1, self.input_size)), self.wavelet, level=self.max_detail_spaces)
         self.alpha_lengths = [b.shape[-1] for b in _bank]
         self.masked_width = pywt.waverec(_bank[:self.J], self.wavelet).shape[-1]
 

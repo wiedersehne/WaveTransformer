@@ -14,23 +14,37 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
     Refs: Bengio: https://arxiv.org/abs/1703.03130
           https://github.com/ExplorerFreda/Structured-Self-Attentive-Sentence-Embedding/blob/master/models.py
 
-    """
-    def __init__(self,
-                 encoder_config,
-                 config,
-                 ):
+    Args:
+        TODO
 
+    Kwargs:
+        TODO
+
+    Inputs: input_sequence, meta_data
+        * **input_sequence**: list of tensors of shape :math:`(N, H_{in}, W)` for non-temporal input, otherwise `(N, time_steps, H_{in}, W)`
+        * **meta_data**: dictionary of meta outputs
+
+    Outputs: multi_resolution_embedding, meta_data
+        * **resolution_embeddings**: list of tensors of shape :math:`(N, D)` containing the resolution embeddings $h_j$, j=1,...,J
+        * **meta_data**: updated dictionary of meta outputs
+    """
+    def __init__(self, input_size, input_channels, r_hops=10, attention_unit=350, **kwargs):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = Encoder(**encoder_config)
-        self.real_hidden_size = config['real_hidden_size']
-        self.drop_hj = nn.Dropout(config['dropout_embeddings'])
-        self.ws1 = nn.LazyLinear(config['attention-unit'], bias=False)
-        self.ws2 = nn.Linear(config['attention-unit'], config['attention-hops'], bias=False)
+
+                #
+        self.attention_hops = r_hops
+
+# Build encoder
+        print(kwargs)
+        self.encoder = Encoder(input_size,input_channels, **kwargs)
+
+        # Attention
+        self.ws1 = nn.LazyLinear(attention_unit, bias=False)
+        self.ws2 = nn.Linear(attention_unit, r_hops, bias=False)
         self.init_weights(init_range=0.1)
         self.activation = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
-        self.attention_hops = config['attention-hops']
 
     def init_weights(self, init_range=0.1):
         self.ws1.weight.data.uniform_(-init_range, init_range)
@@ -51,10 +65,9 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
 
         hidden = torch.stack(hidden, dim=1)
         size = hidden.size()                                           # [batch_size, num_multiscales, n_hidden]
-        hops = self.attention_hops
         compressed_embeddings = hidden.view(-1, size[2])               # [batch_size * num_multiscales, n_hidden]
 
-        hbar = self.activation(self.ws1(self.drop_hj(compressed_embeddings)))   # [batch_size * num_multiscales, attention-unit]
+        hbar = self.activation(self.ws1(compressed_embeddings))   # [batch_size * num_multiscales, attention-unit]
         alphas = self.ws2(hbar).view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention-hops]
         alphas = torch.transpose(alphas, 1, 2).contiguous()            # [batch_size, attention-hops, num_multiscales]
 

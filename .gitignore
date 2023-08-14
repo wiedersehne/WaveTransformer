@@ -249,3 +249,4 @@ cython_debug/
 /experiments/clonal_structures/logs/
 /experiments/ascat/logs/
 /experiments/notebooks/*.pkl
+/experiments/ascat/outputs/

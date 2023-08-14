@@ -39,16 +39,17 @@ class WaveletConv1dLSTM(nn.Module):
             If non-zero, introduces a Dropout layer on the outputs of the Conv1dLSTM cell except the last layer,
              with dropout probability equal to dropout. Default: 0
 
-    Inputs: input_tensor, (h_0, c_0)
-        * **input_tensor**: tensor of shape :math:`(N, J, H_{in}, W)` for non-temporal input, otherwise `(N, time_steps, J, H_{in}, W)`
+    Inputs: input_tensor, (h_0, c_0), j
+        * **input_tensor**: tensor of shape :math:`(N, H_{in}, W)` for non-temporal input, otherwise `(N, time_steps, H_{in}, W)`
         * **h_0**: tensor of shape :math:`(\text{num\_layers}, N, H_{proj}, W)`
         * **c_0**: tensor of shape :math:`(\text{num\_layers}, N, H_{cell}, W)`
+        * **j**: int for resolution index
 
-    Outputs: output, (h_n, c_n)
-        * **output**: tensor of shape :math:`(N, D)` containing the resolution embedding for resolution j
-        * **h_n**: List of L tensors of shape :math:`(N, H_{proj}, W)` containing the final hidden state
+    Outputs: resolution_embedding, (h_n, c_n)
+        * **resolution_embedding**: tensor of shape :math:`(N, D)` containing the resolution embedding $h_j$
+        * **h_n**: List of time_step tensors of shape :math:`(layers, batch_size, H_{proj}, W)` containing the final hidden state
          tensor for resolution j
-        * **c_n**: List of L tensor of shape :math:`(N, H_{cell}, W)` containing  the final cell state
+        * **c_n**: List of time_step tensors of shape :math:`(layers, batch_size, H_{cell}, W)` containing  the final cell state
          tensor for resolution j
 
         #TODO: This class should inherit Conv1dLSTM
@@ -97,13 +98,6 @@ class WaveletConv1dLSTM(nn.Module):
 
     def forward(self, xj, hidden_state, j):
         """
-        xj (torch.tensor):
-            A resolution component, optionally temporal. Shape [batch size, time_steps, input_channels, signal_length]
-            for temporal input, or [batch size, input_channels, signal_length]
-        hidden_state (tuple),
-            Hidden and cell state tensor. Shape: ([n layers, batch size, hid dim, signal length],  [n layers, batch size, hid dim, signal length])
-        j (int)
-            Resolution index [batch_size  (N, J, real_hidden_channels, Signal length)
         """
 
         xj = xj.view((xj.size(0), self.input_channels, -1))
@@ -114,7 +108,7 @@ class WaveletConv1dLSTM(nn.Module):
 
         # Output layer
         output = output[:, -1, :, :]                                # Take the last time_step
-        scale_embedding = self.non_recurrent_output[j](output)
+        resolution_embedding = self.non_recurrent_output[j](output)
 
-        return scale_embedding, (h_next, c_next)
+        return resolution_embedding, (h_next, c_next)
 

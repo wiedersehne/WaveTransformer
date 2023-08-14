@@ -1,3 +1,5 @@
+# Ref: https://proceedings.mlr.press/v151/danks22a/danks22a.pdf
+
 from abc import ABC
 # Torch
 import torch
@@ -14,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from WaveLSTM.custom_callbacks import waveLSTM, attention, survival
-from WaveLSTM.models.base import WaveletBase
+from WaveLSTM.models.base import WaveletBase as SourceSeparation
 from WaveLSTM.modules.self_attentive_encoder import SelfAttentiveEncoder
 from DeSurv.src.classes import ODESurvSingle
 
@@ -22,14 +24,17 @@ import matplotlib.pyplot as plt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class DeSurv(pl.LightningModule, ABC, WaveletBase):
+class DeSurv(pl.LightningModule, ABC, SourceSeparation):
     """ PyTorch lightning wrapper around DeSurv's single-risk ODE model
                     (ref: https://proceedings.mlr.press/v151/danks22a/danks22a.pdf)
 
-    Modifications:
-     - to be compatible with my own dataloaders
-     - unvectorise predict step due to scaling issues with higher feature spaces
-     - refactoring
+    Inherits from WaveletBase - a class which performs discrete wavelet transform based input source separation
+
+    Modifications to wrapped DeSurv code:
+     - to be compatible with pytorch-lightning based dataloaders
+     - unvectorise predict step due to reduce scaling issues with higher feature spaces
+     - general refactoring
+     - TODO: core DeSurv code's forward method returns loss, so our forward for this model does also
     """
 
     @property
@@ -54,80 +59,76 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         else:
             return t / self.time_scale
 
-    def __init__(self,
-                 encoder_config,
-                 attention_config,
-                 surv_config):
-
+    def __init__(self, input_size,  input_channels,                    config ):
+        """
+        """
         super().__init__()
-        WaveletBase.__init__(self,
-                             seq_length=encoder_config["seq_length"],
-                             recursion_limit=encoder_config["recursion_limit"],
-                             wavelet=encoder_config["wavelet"])
-
         self.save_hyperparameters()
-        self.channels, self.seq_length = encoder_config["channels"], encoder_config["seq_length"]
-        self.encoder_type = surv_config["encoder_type"].lower()
-        # Scaling time
-        self._norm_time = 1                   # By default don't scale time
-        self._test_time = 1                   # By default test on range [0, _test_time]
-        # Penalisations
-        self.diversity_coef = surv_config["diversity_coef"]
-        self.weight_decay = surv_config["weight_decay"]
 
-        # Encoder
-        # Wavelet encoder
+        # Data
+        self.input_channels = input_channels
+        self.input_size = input_size
+        # Scaling time
+        self._norm_time = 1  # By default don't scale time
+        self._test_time = 1  # By default test on range [0, _test_time]
+
+        # Initialise encoder
+        self.encoder_type = config.encoder.base.method.lower()
         if self.encoder_type == "wavelstm":
-            encoder_config["J"] = self.J
-            encoder_config["pooled_width"] = self.masked_width
-            self.encoder = SelfAttentiveEncoder(encoder_config=encoder_config,
-                                                config=attention_config)
-        # CNN encoder
-        if self.encoder_type == "cnn":
+            # Wavelet encoder
+            SourceSeparation.__init__(self,
+                                 input_size=self.input_size,
+                                 recursion_limit= config.encoder.waveLSTM.J,
+                                 wavelet= config.encoder.waveLSTM.wavelet)
+            self.encoder = SelfAttentiveEncoder(input_size=self.masked_width,
+                                                input_channels=self.input_channels,
+                                                D=config.encoder.base.D,
+                                                **config.attention, **config.encoder.waveLSTM,
+                                                )
+             # Number of encoded inputs to DeSurv
+            c_dim = (config.encoder.base.D * config.attention.r_hops)  + 2 # Number of encoded inputs to DeSurv
+        elif self.encoder_type == "cnn":
+            # CNN encoder
             # Same architecture as rcCAE. See: https://github.com/zhyu-lab/rccae/blob/main/cae/autoencoder.py
-            # We reduce the width of the network by a factor of 4 to reduce overfitting.
             k_size = 7
-            net_size = 4 # 4 gives the same encoder network as rcCAE (with chromosomes as channels)
             self.encoder = nn.Sequential(
-                nn.Conv1d(self.channels, 32*net_size, k_size, stride=1),
+                nn.Conv1d(self.input_channels, 128, k_size=7, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(32*net_size, 16*net_size, k_size, stride=1),
+                nn.Conv1d(128, 64, k_size=7, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(16*net_size, 8*net_size, k_size, stride=1),
+                nn.Conv1d(64, 32, k_size=7, stride=1),
                 nn.LeakyReLU(),
                 nn.Flatten(),
-                nn.LazyLinear(out_features=encoder_config["scale_embed_dim"])
+                nn.LazyLinear(out_features=config.encoder.base.D)
             )
-        if self.encoder_type == "lstm":
-            self.encoder = nn.LSTM(input_size=self.channels,
-                                   hidden_size=encoder_config["hidden_size"],
-                                   proj_size=encoder_config["scale_embed_dim"],
-                                   num_layers=encoder_config["layers"],
+            c_dim = config.encoder.base.D + 2# Number of encoded inputs to DeSurv
+        elif self.encoder_type== "lstm":
+            # Uni-directional LSTM
+            self.encoder = nn.LSTM(input_size=self.input_channels,
+                                   hidden_size=config.encoder.lstm.hidden_size,
+                                   proj_size=config.encoder.lstm.proj_size,
+                                   num_layers=config.encoder.lstm.layers,
                                    bidirectional=False,
                                    batch_first=True)
-            self.encoder_outlayer = nn.LazyLinear(out_features=encoder_config["scale_embed_dim"])
+            self.encoder_outlayer = nn.LazyLinear(out_features=config.encoder.base.D)
+            c_dim = config.encoder.base.D + 2# Number of encoded inputs to DeSurv
+        elif self.encoder_type in ["average", "avg"]:
+            c_dim = 3# Number of encoded inputs to DeSurv
+        elif self.encoder_type == None:
+            c_dim = 2   # Do not use CNA data
+        else:
+            raise NotImplementedError
 
         # Survival model
         hidden_dim = 32  # Hidden dimension size inside ODE model
         lr = np.inf                                          # This learning rate isnt used - just caveat of imported code
-        if self.encoder_type == "wavelstm":
-            # Flattened multi-resolution embedding dimension + number of additional covariates
-            c_dim = encoder_config["scale_embed_dim"] * attention_config["attention-hops"]  + 2
-        elif self.encoder_type in ["average", "avg"]:
-            c_dim = 3
-        elif self.encoder_type in ["cnn", "lstm"]:
-            c_dim = encoder_config["scale_embed_dim"] + 2
-        elif self.encoder_type in ["none"]:
-            c_dim = 2
-        else:
-            raise NotImplementedError
-        self.surv_model = ODESurvSingle(lr, c_dim, hidden_dim, device="gpu")     # 2 baseline covariates
+        self.surv_model = ODESurvSingle(lr, c_dim, hidden_dim, device="gpu")
 
     def forward(self, x: torch.tensor, c: torch.tensor, t: torch.tensor, k: torch.tensor):
         """
         Note: Due to how De-Surv is coded, we also have to return the loss in the forward def. This unfortunately means
                 we must input survival time `t' into the forward call making it impossible to use this on test data
-                where true survival time is not known. Instead you may need to overload the predict_step() function in
+                where true survival time is not known. Instead we need to overload the predict_step() function in
                 this case.
 
         x: count number alteration data
@@ -148,7 +149,7 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
                 'scaled_masked_targets': masked_targets,
             })
             # Attentively encode
-            h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, scale_embed_dim]
+            h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, resolution_embed_size]
             meta_data.update({"M": h})
             h = h.view(h.size(0), -1)                  # Flatten multi-resolution embeddings
             X = torch.concat((h, c), dim=1)
@@ -176,7 +177,7 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
         return {"loss": loss_survival / X.shape[0]}, meta_data
 
-    def loss(self, batch: dict, batch_idx: int):
+    def loss(self, batch: dict, batch_idx: int, diversity_coef=0):
         x, t, k = batch['feature'], batch['survival_time'], batch['survival_status']
         c = torch.stack((batch["days_since_birth"].to(device),
                          torch.tensor([1 if i == "male" else 0 for i in batch['sex']], device=device)),
@@ -184,15 +185,14 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
         losses, meta_data = self(x, c, t, k)
         loss = losses["loss"]
 
-        # Calculate diversity penalization
-        #   promotes diversity between hops if penality_coef > 0,
-        #   promotes diversity within hops r==1 and < 0
-        if "attention" in meta_data.keys() and self.diversity_coef != 0:
+        # Calculate diversity penalization - this is not used in the accompanying paper
+        #   promotes diversity between hops if r_hops > 1 and penality_coef > 0,
+        if "attention" in meta_data.keys() and diversity_coef != 0:
             atn = meta_data["attention"]            # [bsz, rhops, J]
             atn_t = torch.transpose(atn, 1, 2).contiguous()
             eye = torch.stack([torch.eye(atn.shape[1]) for _ in range(atn.shape[0])], dim=0)
             p = torch.norm(torch.bmm(atn, atn_t) - eye.to(device))
-            loss += self.diversity_coef * p
+            loss += diversity_coef * p
 
         return {"loss": loss}
 
@@ -225,9 +225,9 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
             # Input masking
             masked_inputs, _ = self.sequence_mask(self.scale(x))
             # Attentively encode
-            h, pred_meta_data = self.encoder(masked_inputs, pred_meta_data)  # [batch_size, attention-hops, scale_embed_dim]
+            h, pred_meta_data = self.encoder(masked_inputs, pred_meta_data)  # [batch_size, attention-hops, resolution_embed_size]
             # Flatten multi-resolution embeddings
-            h = h.view(h.size(0), -1)                               # [batch_size, attention-hops * scale_embed_dim]
+            h = h.view(h.size(0), -1)                               # [batch_size, attention-hops * resolution_embed_size]
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "cnn":
             h = self.encoder(self.scale(x))
@@ -245,12 +245,10 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
         # All x.size(0) * n_eval prediction inputs
         t_test = torch.tensor(np.concatenate([t_eval] * X.shape[0], 0), dtype=torch.float32, device=device)
-        # X_test_Dom = torch.tensor(np.repeat(X.cpu(), [t_eval.size] * X.shape[0], axis=0), device=device,
-        #                       dtype=torch.float32)  # TODO: keep inside torch
         X_test = X.repeat_interleave(t_eval.size, 0).to(device, torch.float32)
 
         # Cannot make all predictions at once due to memory constraints
-        pred_batch = 16382                                                        # Predict in batches of `pred_batch`
+        pred_batch = 16382                                                        # Predict in batches
         pred = []
         for X_test_batched, t_test_batched in zip(torch.split(X_test, pred_batch), torch.split(t_test, pred_batch)):
             pred.append(self.surv_model.predict(X_test_batched, t_test_batched))
@@ -261,7 +259,7 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
 
     def configure_optimizers(self):
         """ For survival model have a different scheduler for the encoder parameters and the task head (DeSurv) params"""
-        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=self.weight_decay)
+        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=0)
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer, verbose=True, factor=0.5),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
@@ -275,80 +273,53 @@ class DeSurv(pl.LightningModule, ABC, WaveletBase):
             "lr_scheduler": lr_scheduler_config
         }
 
-def create_desurv(cancers, seq_length, channels,
-                  encoder_type="waveLSTM",
-                  J=None,
-                  r_hops=10,
-                  hidden_size=32,
-                  h_proj=1,
-                  D=1,
-                  weight_decay=0,
-                  dir_path="logs", verbose=False, monitor="val_loss",
-                  num_epochs=200, gpus=1,
-                  validation_hook_batch=None, test_hook_batch=None,
-                  project='WaveLSTM-aeDeSurv', run_id="null",
-                  # outfile="logs/desurv-output.pkl",
+def create_desurv(data_module, test_data, val_data, cfg,
+                  dir_path="logs",
+                  gpus=1,
                   ):
 
-    outfile = f"logs/desurv_J{J}R{r_hops}.pkl"
+    # Data parameters
+    labels = data_module.label_encoder.classes_
+    W=data_module.W               # Signal length
+    C=data_module.C             # Input channels
 
-    encoder_config = {"seq_length": seq_length,
-                      "channels": channels,
-                      "hidden_size": hidden_size,                 # Dimension of cell state
-                      "proj_size": h_proj, # Dimension of hidden cell state
-                      "scale_embed_dim": D, # Dimension of relolution and multi-resolution embeddings
-                      "layers": 1,  # Number of ConvLSTM layers
-                      "kernel_size": 1, # Size of convolutional kernel inside ConvLSTMcell
-                      "wavelet": 'haar',
-                      "recursion_limit": J
-                      }
-    attention_config = {"dropout_embeddings": 0,
-                        "attention-unit": 350,
-                        "attention-hops": r_hops,
-                        "real_hidden_size": h_proj if h_proj > 0 else hidden_size,  # Encoder's hidden size
-                        }
-    surv_config = {"encoder_type": encoder_type,
-                   "diversity_coef": 0.0,
-                   "weight_decay": weight_decay
-                   }
-
-    _model = DeSurv(encoder_config=encoder_config,
-                    attention_config=attention_config,
-                    surv_config=surv_config)
-    print(_model)
+    # Create model
+    _model = DeSurv(input_size=W,  input_channels=C,                    config=cfg)
+    if cfg.experiment.verbose:
+        print(_model)
 
     # Initialize wandb logger
-    wandb_logger = WandbLogger(project=project,
-                               name=run_id,
+    wandb_logger = WandbLogger(project=cfg.experiment.project_name,
+                               name=cfg.experiment.run_id,
                                job_type='train',
                                save_dir=dir_path)
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=dir_path + "/checkpoints",
-        filename=run_id,
-        verbose=verbose,
-        monitor=monitor,
+        filename=cfg.experiment.run_id,
+        verbose=cfg.experiment.verbose,
+        monitor="val_loss",
     )
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
         patience=1,
-        verbose=verbose
+        verbose=cfg.experiment.verbose
     )
 
-    # TODO: add this to the datamodule to avoid potential bugs
-    label_dictionary = {key: val for key, val in zip([i for i in range(len(cancers))], cancers)}
+    # TODO: add this to the data module to avoid bugs getting order wrong
+    label_dictionary = {key: val for key, val in zip([i for i in range(len(labels))], labels)}
     print(label_dictionary)
     surv_metrics = survival.PerformanceMetrics(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch
+        val_samples=val_data,
+        test_samples=test_data
     )
 
     viz_KM = survival.KaplanMeier(
-        val_samples=validation_hook_batch,
-        test_samples=test_hook_batch,
+        val_samples=val_data,
+        test_samples=test_data,
         label_dictionary=label_dictionary,
         group_by=["label"],
         error_bars=True,
@@ -360,28 +331,28 @@ def create_desurv(cancers, seq_length, channels,
                  surv_metrics,
                  viz_KM,
                  ]
-    if encoder_type.lower() == "wavelstm":
+    if cfg.encoder.base.method.lower() == "wavelstm":
         viz_embedding_callback = waveLSTM.ResolutionEmbedding(
-            val_samples=validation_hook_batch,
-            test_samples=test_hook_batch,
+            val_samples=val_data,
+            test_samples=test_data,
             label_dictionary=label_dictionary
         )
 
         viz_multi_res_embed = attention.MultiResolutionEmbedding(
-            val_samples=validation_hook_batch,
-            test_samples=test_hook_batch,
+            val_samples=val_data,
+            test_samples=test_data,
             label_dictionary=label_dictionary
         )
 
         viz_attention = attention.Attention(
-            val_samples=validation_hook_batch,
-            test_samples=test_hook_batch,
+            val_samples=val_data,
+            test_samples=test_data,
             label_dictionary=label_dictionary
         )
 
         save_output = waveLSTM.SaveOutput(
-            test_samples=test_hook_batch,
-            file_path=outfile
+            test_samples=test_data,
+            file_path=cfg.experiment.save_file
         )
 
         # Add the wave-LSTM encoder callbacks
@@ -394,7 +365,7 @@ def create_desurv(cancers, seq_length, channels,
     _trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=callbacks,
-        max_epochs=num_epochs,
+        max_epochs=cfg.experiment.num_epochs,
         log_every_n_steps=10,
         check_val_every_n_epoch=3,
         gpus=gpus,

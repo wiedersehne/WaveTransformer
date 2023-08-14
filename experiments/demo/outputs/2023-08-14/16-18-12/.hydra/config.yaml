@@ -1,0 +1,26 @@
+data:
+  samples: 2000
+  batch_size: 256
+  sig_length: 512
+experiment:
+  project_name: WaveLSTM-clf
+  num_epochs: 100
+  run_id: demo_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}
+  save_file: logs/${experiment.run_id}.pkl
+  train: true
+  verbose: true
+attention:
+  r_hops: 1
+  attention_unit: 350
+encoder:
+  base:
+    D: 10
+    method: waveLSTM
+  waveLSTM:
+    wavelet: haar
+    J: 7
+    layers: 1
+    hidden_channels: 128
+    proj_size: 0
+classifier:
+  nfc: 256
