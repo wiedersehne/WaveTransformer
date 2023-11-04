@@ -92,11 +92,11 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
             # Same architecture as rcCAE. See: https://github.com/zhyu-lab/rccae/blob/main/cae/autoencoder.py
             k_size = 7
             self.encoder = nn.Sequential(
-                nn.Conv1d(self.input_channels, 128, k_size=7, stride=1),
+                nn.Conv1d(self.input_channels, 128, kernel_size=7, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(128, 64, k_size=7, stride=1),
+                nn.Conv1d(128, 64, kernel_size=7, stride=1),
                 nn.LeakyReLU(),
-                nn.Conv1d(64, 32, k_size=7, stride=1),
+                nn.Conv1d(64, 32, kernel_size=7, stride=1),
                 nn.LeakyReLU(),
                 nn.Flatten(),
                 nn.LazyLinear(out_features=config.encoder.base.D)
@@ -120,7 +120,7 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
             raise NotImplementedError
 
         # Survival model
-        hidden_dim = 32  # Hidden dimension size inside ODE model
+        hidden_dim = config.DeSurv.hidden  # Hidden dimension size inside ODE model
         lr = np.inf                                          # This learning rate isnt used - just caveat of imported code
         self.surv_model = ODESurvSingle(lr, c_dim, hidden_dim, device="gpu")
 
@@ -277,6 +277,8 @@ def create_desurv(data_module, test_data, val_data, cfg,
                   dir_path="logs",
                   gpus=1,
                   ):
+
+    # pl.seed_everything(cfg.experiment.seed)
 
     # Data parameters
     labels = data_module.label_encoder.classes_

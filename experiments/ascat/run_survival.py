@@ -4,13 +4,16 @@ import numpy as np
 import TCGA
 import torch
 import wandb
+import pytorch_lightning as pl
 from WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder
 from WaveLSTM.models.DeSurv import create_desurv
 
+# pl.seed_everything(42)
 
-def make_dataloaders(cfg_data):
+
+def make_dataloaders(config):
     # Load data
-    dm = TCGA.data_modules.ascat.loaders.ASCATDataModule(**cfg_data)
+    dm = TCGA.data_modules.ascat.loaders.ASCATDataModule(**config.data)
     # print(np.unique(dm.data_frame["cancer_type"]))
 
     # validation data for validation hooks
@@ -41,11 +44,12 @@ def run_wavelet_desurv(cfg : DictConfig):
     """
     """
     # print(OmegaConf.to_yaml(cfg))
+    # torch.manual_seed(cfg.experiment.seed)
 
     #################
     # Make dataloader
     #################
-    dm, val_data, test_data = make_dataloaders(cfg.data)
+    dm, val_data, test_data = make_dataloaders(cfg)
 
     ############
     # Make model
@@ -58,10 +62,13 @@ def run_wavelet_desurv(cfg : DictConfig):
     std = torch.std(features, 0)
     std[std < 1e-2] = 1
     model.normalize_stats = (mean, std)
+    model.time_scale =  7064 # np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())]) #
+    # Range of times we evaluate test metrics on. Chosen empirically, then fixed for all runs.
+    model.max_test_time =  5480   # np.max([b["survival_time"].max() for b in iter(dm.test_dataloader())])     #
 
-    # Standardizing scale for survival time. Chosen empirically, then fixed for all runs.
-    model.time_scale = 7064   # np.max([b["survival_time"].max() for b in iter(dm.train_dataloader())])
-    model.max_test_time = 5480      # np.max([b["survival_time"].max() for b in iter(dm.test_dataloader())])
+    # Report range of observed times for each data split
+    max_times = [np.max([b["survival_time"].max() for b in iter(loader)]) for loader in [dm.train_dataloader(), dm.val_dataloader(), dm.test_dataloader()]]
+    print(max_times)
 
     if cfg.experiment.train:
         trainer.fit(model, datamodule=dm)

@@ -80,6 +80,7 @@ class WaveletConv1dLSTM(nn.Module):
         self.resolution_embed_size = resolution_embed_size
 
         # LSTM
+        # self.bn = torch.nn.BatchNorm1d(self.real_hidden_channels)
         self.rnn = Conv1dLSTM(input_channels=self.input_channels,
                               hidden_channels=hidden_channels,
                               kernel_size=kernel_size,
@@ -92,6 +93,7 @@ class WaveletConv1dLSTM(nn.Module):
         non_recurrent_output = [nn.Sequential(
             nn.Flatten(),
             nn.LazyLinear(out_features=self.resolution_embed_size),
+            # nn.ReLU(),
         )
             for _ in range(J)]
         self.non_recurrent_output = nn.ModuleList(non_recurrent_output)

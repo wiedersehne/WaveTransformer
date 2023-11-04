@@ -6,10 +6,11 @@ data:
 experiment:
   project_name: "WaveLSTM-surv"
   num_epochs: 200
-  run_id: deSurv_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}    # TODO: generalise this to benchmarks
+  run_id: deSurv_RecReLUAfter_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}_${experiment.seed}    # TODO: remove J and R reference for benchmarks
   save_file: logs/${experiment.run_id}.pkl
   train: True
   verbose: True
+  seed: 42
 
 attention:
   r_hops: 10
@@ -33,7 +34,8 @@ encoder:
   lstm:
         layers: 1
         hidden_size: 32
-        proj_size: 0
+        proj_size: 1
 
-
+DeSurv:
+  hidden: 32
 
