@@ -10,7 +10,7 @@ def make_dataloaders(cfg_data):
     # Load data
     dm = TCGA.data_modules.CHISEL_S0E.loaders.DataModule(**cfg_data)
 
-        # stack batches to test set samples on test hook
+    # stack batches to test set samples on test hook
     features, labels = [], []
     for t_batch in iter(dm.test_dataloader()):
         features.append(t_batch["feature"])

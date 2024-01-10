@@ -231,7 +231,7 @@ pool_targets=False,
         max_epochs=cfg.experiment.num_epochs,
         check_val_every_n_epoch=5,
         log_every_n_steps=2,
-        gpus=gpus,
+        devices=gpus,
     )
 
     return _model, _trainer

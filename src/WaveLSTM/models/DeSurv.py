@@ -370,7 +370,7 @@ def create_desurv(data_module, test_data, val_data, cfg,
         max_epochs=cfg.experiment.num_epochs,
         log_every_n_steps=10,
         check_val_every_n_epoch=3,
-        gpus=gpus,
+        devices=gpus,
     )
 
     return _model, _trainer

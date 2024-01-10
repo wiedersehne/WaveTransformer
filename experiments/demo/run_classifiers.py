@@ -1,15 +1,10 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from SignalTransformData.data_modules.simulated import SinusoidalDataModule
+from SignalTransformData.simulated import SinusoidalDataModule
 from demo_config import get_demo_config
 from WaveLSTM.models.classifier import create_classifier
 import torch
 
-
-def make_dataloaders(cfg_data):
-    # Load data
-    dm = SinusoidalDataModule(get_demo_config(), **cfg_data)
-    return dm, next(iter(dm.val_dataloader())), next(iter(dm.test_dataloader()))
 @hydra.main(version_base=None, config_path="confs", config_name="classifier_config")
 def run_sinusoidal_example(cfg : DictConfig):
     """
@@ -19,14 +14,11 @@ def run_sinusoidal_example(cfg : DictConfig):
     #################
     # Make dataloader
     #################
-    dm, val_data, test_data = make_dataloaders(cfg.data)
-    dm.W =cfg.data.sig_length
-    dm.C = 2
+    dm = SinusoidalDataModule(get_demo_config(), **cfg.data)
     print(f"width {dm.W}, channels {dm.C}")
 
     # Create model
-    model, trainer = create_classifier(classes=[f"Class {i}" for i in range(1, 7)],
-                                       data_module=dm, test_data=test_data, val_data=val_data, cfg=cfg)
+    model, trainer = create_classifier(classes=[f"Class {i}" for i in range(1, 7)], data_module=dm, cfg=cfg)
     # Normalizing stats
     features = torch.concat([batch["feature"] for batch in dm.train_dataloader()], 0)
     model.normalize_stats = (torch.mean(features, 0), torch.std(features, 0))

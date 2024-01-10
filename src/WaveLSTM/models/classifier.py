@@ -19,6 +19,7 @@ from WaveLSTM.modules.self_attentive_encoder import SelfAttentiveEncoder
 # Callbacks
 from WaveLSTM.custom_callbacks import waveLSTM
 from WaveLSTM.custom_callbacks import attention
+import logging
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -136,20 +137,20 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         }
 
 
-
-def create_classifier(classes, data_module, test_data, val_data, cfg,
+def create_classifier(classes, data_module, cfg,
                       dir_path="logs",
                       gpus=1,
                       ):
 
-    # Data parameters
-    labels = classes
-    W=data_module.W               # Signal length
-    C=data_module.C             # Input channels
+    # Get validation and test hook batch
+    val_data = next(iter(data_module.val_dataloader()))
+    test_data = next(iter(data_module.test_dataloader()))
 
-    _model = AttentiveClassifier(input_size=W, input_channels=C, num_classes=len(classes), config=cfg)
-    if cfg.experiment.verbose:
-        print(_model)
+    _model = AttentiveClassifier(input_size=data_module.W,
+                                 input_channels=data_module.C,
+                                 num_classes=len(classes),
+                                 config=cfg)
+    logging.debug(_model)
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
@@ -210,8 +211,8 @@ def create_classifier(classes, data_module, test_data, val_data, cfg,
         callbacks=callbacks,
         max_epochs=cfg.experiment.num_epochs,
         log_every_n_steps=5,
-    check_val_every_n_epoch=2,
-        gpus=gpus,
+        check_val_every_n_epoch=2,
+        devices=gpus,
     )
 
     return _model, _trainer
