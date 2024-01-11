@@ -1,6 +1,8 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from SignalTransformData.simulated import SinusoidalDataModule
+from SignalTransformData.sinusoidal.loader import SinusoidalDataModule
+from SignalTransformData.sinusoidal.generate import SinusoidalDataset
+
 from demo_config import get_demo_config
 from WaveLSTM.models.classifier import create_classifier
 import torch
@@ -14,8 +16,7 @@ def run_sinusoidal_example(cfg : DictConfig):
     #################
     # Make dataloader
     #################
-    dm = SinusoidalDataModule(get_demo_config(), **cfg.data)
-    print(f"width {dm.W}, channels {dm.C}")
+    dm = SinusoidalDataModule(batch_size=256)
 
     # Create model
     model, trainer = create_classifier(classes=[f"Class {i}" for i in range(1, 7)], data_module=dm, cfg=cfg)

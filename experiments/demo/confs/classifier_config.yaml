@@ -1,8 +1,3 @@
-data:
-  samples: 2000
-  batch_size: 256
-  sig_length: 512
-
 experiment:
   project_name: "WaveLSTM-clf"
   num_epochs: 100

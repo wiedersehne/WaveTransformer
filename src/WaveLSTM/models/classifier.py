@@ -26,7 +26,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
 
-    def __init__(self, input_size,  input_channels,                    num_classes, config ):
+    def __init__(self,
+                 input_size,
+                 input_channels,
+                 num_classes,
+                 config ):
 
         super().__init__()
         self.save_hyperparameters()
@@ -146,8 +150,8 @@ def create_classifier(classes, data_module, cfg,
     val_data = next(iter(data_module.val_dataloader()))
     test_data = next(iter(data_module.test_dataloader()))
 
-    _model = AttentiveClassifier(input_size=data_module.W,
-                                 input_channels=data_module.C,
+    _model = AttentiveClassifier(input_size=512,
+                                 input_channels=2,
                                  num_classes=len(classes),
                                  config=cfg)
     logging.debug(_model)
