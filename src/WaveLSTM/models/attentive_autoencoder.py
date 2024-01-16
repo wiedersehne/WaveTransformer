@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import logging
 # PyTorch-lightning
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger              # tracking tool
@@ -24,30 +25,28 @@ from WaveLSTM.custom_callbacks import autoencoder
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
+class AttentiveAutoEncoder(pl.LightningModule, ABC):
 
     def get_conv_shape(self, width, kernel_size, padding=0, stride=1):
         return int( (( width - kernel_size + (2 * padding)) / stride ) + 1 )
 
-    def __init__(self, input_size, input_channels, config, pool_targets=False):
+    def __init__(self, input_size, input_channels, config):
         """
         """
         super().__init__()
         self.save_hyperparameters()
 
         # Data
-        self.input_channels = input_channels
         self.input_size = input_size
-        # Reconstruct in averaged pooled domain, or original feature space
-        self.pool_targets = pool_targets
-
+        self.input_channels = input_channels
+        self.pool_targets = config.experiment.pool_targets     # Reconstruct in pooled, or original feature space
 
         # Encoder
-        SourceSeparation.__init__(self,
-                             input_size=self.input_size,
-                             recursion_limit=config.encoder.waveLSTM.J,
-                             wavelet=config.encoder.waveLSTM.wavelet)
-        self.encoder = SelfAttentiveEncoder(input_size=self.masked_width,
+        self.source_separation_layer = SourceSeparation(input_size=self.input_size,
+                                                        input_channels=self.input_channels,
+                                                        recursion_limit=config.encoder.waveLSTM.J,
+                                                        wavelet=config.encoder.waveLSTM.wavelet)
+        self.encoder = SelfAttentiveEncoder(input_size=self.source_separation_layer.masked_width,
                                             input_channels=self.input_channels,
                                             D=config.encoder.base.D,
                                             **config.attention, **config.encoder.waveLSTM,
@@ -55,7 +54,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
 
         # Decoder:
         decoder_method=  config.decoder.base.method.lower()
-        self.target_width = self.masked_width if self.pool_targets else self.input_size
+        self.target_width = self.source_separation_layer.masked_width if self.pool_targets else self.input_size
         # Convolutional:  Decode from the multi-resolution embedding (M) using a transposed convolutional neural network
         if decoder_method == "rccae":
             k_size = 7
@@ -97,16 +96,15 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
 
         # Input masking. Perform IWT twice
         # - first for if we want to reconstruct with filterered targets (see loss: default False)
-        _, masked_targets = self.sequence_mask(x, pool_targets=self.pool_targets)
+        masked_inputs, masked_targets = self.source_separation_layer(x, pool_targets=self.pool_targets)
         # - second for the input sequence for the waveLSTM encoder
-        scaled_masked_inputs, _ = self.sequence_mask(self.scale(x))
         meta_data = {
-            'masked_inputs': scaled_masked_inputs,
+            'masked_inputs': masked_inputs,
             'masked_targets': masked_targets,
         }
 
         # Attentively encode
-        M, meta_data = self.encoder(scaled_masked_inputs, meta_data)
+        M, meta_data = self.encoder(masked_inputs, meta_data)
         meta_data.update({"M": M})                                 # [batch_size, attention-hops, resolution_embed_size]
 
         # Decode
@@ -117,10 +115,8 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
         return recon, meta_data
 
     def loss(self, batch, batch_idx, filter=True) -> dict:
-        recon, meta_results = self(batch['feature'])
-        target = meta_results["masked_targets"][-1] if filter else batch['feature']
-        if self.pool_targets is False:
-            target = self.scale(target)
+        recon, meta_results = self(batch['CNA'])
+        target = meta_results["masked_targets"][-1] if filter else batch['CNA']
         return {'loss': F.mse_loss(torch.flatten(recon, start_dim=1),
                                    torch.flatten(target, start_dim=1))
                 }
@@ -141,7 +137,7 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
         return test_loss_dict['loss']
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters())
+        optimizer = optim.AdamW(self.parameters())
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
@@ -155,29 +151,27 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC, SourceSeparation):
             "lr_scheduler": lr_scheduler_config
         }
 
-def create_sa_autoencoder(data_module, test_data, val_data, cfg,
-                  dir_path="logs",
-                  gpus=1,
-pool_targets=False,
-                          ):
-    # Data parameters
-    labels = data_module.label_encoder.classes_
-    W=data_module.W               # Signal length
-    C=data_module.C             # Input channels
+def create_sa_autoencoder(data_module, cfg, gpus=1):
 
-    _model = AttentiveAutoEncoder(input_size=W,  input_channels=C, config=cfg, pool_targets=pool_targets)
-    if cfg.experiment.verbose:
-        print(_model)
+    # Get validation and test hook batch
+    val_data = next(iter(data_module.val_dataloader()))
+    test_data = next(iter(data_module.test_dataloader()))
+
+    _model = AttentiveAutoEncoder(input_size=data_module.W,
+                                  input_channels=data_module.C,
+                                  config=cfg,
+                                  )
+    logging.debug(_model)
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
                                name=cfg.experiment.run_id,
                                job_type='train',
-                               save_dir=dir_path)
+                               save_dir="outputs")
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath=dir_path + "/checkpoints",
+        dirpath="outputs/checkpoints",
         filename=cfg.experiment.run_id,
         verbose=cfg.experiment.verbose,
         monitor="val_loss",
@@ -210,10 +204,10 @@ pool_targets=False,
         test_samples=test_data
     )
 
-    save_output = waveLSTM.SaveOutput(
-        test_samples=test_data,
-        file_path=cfg.experiment.save_file
-    )
+    # save_output = waveLSTM.SaveOutput(
+    #     test_samples=test_data,
+    #     file_path=cfg.experiment.save_file
+    # )
 
 
     callbacks = [checkpoint_callback,
@@ -222,7 +216,7 @@ pool_targets=False,
                  viz_multi_res_embed,
                  viz_attention,
                  viz_reconstruction,
-                 save_output,
+                 # save_output,
                  ]
 
     _trainer = pl.Trainer(

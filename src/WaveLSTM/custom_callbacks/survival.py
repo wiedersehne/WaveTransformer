@@ -11,7 +11,8 @@ from WaveLSTM.custom_callbacks.base import BaseCallback
 from pycox.evaluation import EvalSurv
 import pandas as pd
 import seaborn as sns
-from plotly import offline
+# from plotly import offline
+import copy
 
 class PerformanceMetrics(Callback, BaseCallback):
     """
@@ -28,17 +29,17 @@ class PerformanceMetrics(Callback, BaseCallback):
 
     def run_callback(self, features, labels, log_name, _trainer, _pl_module, **val_surv):
         labels = labels.cpu().detach().numpy()
-        t_eval = np.linspace(0, _pl_module.max_test_time, 300)
+        t_eval = np.linspace(start=0, stop=_pl_module.time_scale, num=300)
 
         # Push features through the model
-        prediction, _ = _pl_module.predict(features, val_surv["c"], t_eval=t_eval)
+        prediction, _ = _pl_module.predict(features, val_surv["c"], t=t_eval)
         surv = pd.DataFrame(np.transpose((1 - prediction)), index=t_eval)
 
-        t = val_surv["t"].cpu().detach().numpy()
+        t = val_surv["t"].cpu().detach().numpy() # / _pl_module.time_scale
         k = val_surv["k"].cpu().detach().numpy()
         ev = EvalSurv(surv, t, k, censor_surv='km')
 
-        time_grid = np.linspace(t.min(), 0.9 * t.max(), 1000)
+        time_grid = np.linspace(start=t.min(), stop=0.9 * _pl_module.time_scale, num=300)
         ctd = ev.concordance_td()                           # Time-dependent Concordance Index
         ibs = ev.integrated_brier_score(time_grid)          # Integrated Brier Score
         inbll = ev.integrated_nbll(time_grid)               # Integrated Negative Binomial LogLikelihood
@@ -73,7 +74,9 @@ class PerformanceMetrics(Callback, BaseCallback):
 
 class KaplanMeier(Callback, BaseCallback):
 
-    def __init__(self, val_samples=None, test_samples=None, label_dictionary=None, group_by=["label"],
+    def __init__(self,
+                 val_samples=None, test_samples=None,
+                 label_dictionary=None, group_by=["label"],
                  error_bars=True, samples=True):
         """
         @param: group_by
@@ -92,14 +95,13 @@ class KaplanMeier(Callback, BaseCallback):
         self.samples = samples
 
     def run_callback(self, features, labels, log_name, _trainer, _pl_module, **val_surv):
-        # Cancer types, and turn into
         labels = labels.cpu().detach().numpy()
         if self.label_dict is not None:
             labels = [self.label_dict[l] for l in labels]
-        t_eval = np.linspace(0, _pl_module.max_test_time, 300)
+        t_eval = np.linspace(0, _pl_module.time_scale, 100)
 
         # Push features through the model
-        prediction, meta_data = _pl_module.predict(features, val_surv["c"], t_eval=t_eval)
+        prediction, meta_data = _pl_module.predict(features, val_surv["c"], t=t_eval)
         prediction = 1 - prediction
 
         # Put into df (#TODO: vectorise)
@@ -107,7 +109,7 @@ class KaplanMeier(Callback, BaseCallback):
         for idx_n in range(prediction.shape[0]):
             for idx_t in range(prediction.shape[1]):
                 d = {'survival_prob' : prediction[idx_n, idx_t],
-                     'time' : t_eval[idx_t] / 365,
+                     'time' : t_eval[idx_t],
                      'sample_id' : f"s{idx_n}",
                      'cancer type': labels[idx_n],
                      'event': int(val_surv["k"][idx_n].detach().cpu().numpy())
@@ -123,21 +125,21 @@ class KaplanMeier(Callback, BaseCallback):
                 fig.suptitle(f"Mean with 95% CI of estimator")
                 sns.lineplot(data=surv, x="time", y="survival_prob", hue="cancer type", ax=ax,
                              estimator="mean")   # style="event",
-                plt.xlim((0, _pl_module.max_test_time / 365))
+                plt.xlim((0, _pl_module.time_scale))
                 plt.ylim((0, 1))
-                plt.xlabel("Time (years)")
+                plt.xlabel("Time")
                 plt.ylabel("Probability of survival")
                 wandb_images.append(wandb.Image(fig))
             if self.samples:
                 for cancer in surv["cancer type"].unique():
                     group_surv = surv[surv["cancer type"] == cancer]
                     fig, ax = plt.subplots(1, 1)
-                    fig.suptitle(f"{cancer} individuals")
+                    # fig.suptitle(f"label: {cancer}")
                     sns.lineplot(data=group_surv, x="time", y="survival_prob", hue="cancer type", units="sample_id",
-                                 estimator=None, lw=1, alpha=0.1, ax=ax)
-                    plt.xlim((0, _pl_module.max_test_time / 365))
+                                 estimator=None, lw=1, alpha=0.2, ax=ax)
+                    plt.xlim((0, _pl_module.time_scale))
                     plt.ylim((0, 1))
-                    plt.xlabel("Time (years)")
+                    plt.xlabel("Time")
                     plt.ylabel("Probability of survival")
                     wandb_images.append(wandb.Image(fig))
 

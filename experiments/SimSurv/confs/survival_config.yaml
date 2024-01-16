@@ -1,0 +1,38 @@
+data:
+  batch_size: 64
+
+experiment:
+  project_name: "WaveLSTM-SimSurv"
+  num_epochs: 200
+  run_id: ${encoder.base.method}_${experiment.seed}
+  save_file: outputs/${experiment.run_id}.pkl
+  train: True
+  verbose: True
+  seed: 42
+
+attention:
+  r_hops: 10
+  attention_unit: 350
+
+encoder:
+  # Shared parameters
+  base:
+    D: 5
+    method: waveLSTM
+  # Method specific parameters
+  waveLSTM:
+    wavelet: haar
+    J: 7
+    layers: 1
+    hidden_channels: 64
+    proj_size: 32
+  cnn:
+    hidden_size: 64
+  lstm:
+      layers: 1
+      hidden_size: 64
+      proj_size: 21
+
+DeSurv:
+  hidden: 32
+

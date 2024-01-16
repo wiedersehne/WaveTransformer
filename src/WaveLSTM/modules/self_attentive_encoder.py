@@ -32,10 +32,9 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         super().__init__()
         self.save_hyperparameters()
 
-                #
         self.attention_hops = r_hops
 
-# Build encoder
+        # Build encoder
         print(kwargs)
         self.encoder = Encoder(input_size,input_channels, **kwargs)
 

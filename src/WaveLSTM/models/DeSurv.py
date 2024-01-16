@@ -14,6 +14,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import numpy as np
 import pandas as pd
+import logging
 
 from WaveLSTM.custom_callbacks import waveLSTM, attention, survival
 from WaveLSTM.models.base import WaveletBase as SourceSeparation
@@ -21,10 +22,9 @@ from WaveLSTM.modules.self_attentive_encoder import SelfAttentiveEncoder
 from DeSurv.src.classes import ODESurvSingle
 
 import matplotlib.pyplot as plt
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class DeSurv(pl.LightningModule, ABC, SourceSeparation):
+class DeSurv(pl.LightningModule, ABC):
     """ PyTorch lightning wrapper around DeSurv's single-risk ODE model
                     (ref: https://proceedings.mlr.press/v151/danks22a/danks22a.pdf)
 
@@ -37,50 +37,31 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
      - TODO: core DeSurv code's forward method returns loss, so our forward for this model does also
     """
 
-    @property
-    def time_scale(self):
-        return self._time_scale
-
-    @time_scale.setter
-    def time_scale(self, t):
-        self._time_scale = t
-
-    @property
-    def max_test_time(self):
-        return self._test_time
-
-    @max_test_time.setter
-    def max_test_time(self, t):
-        self._test_time = t
-
-    def transform_time(self, t):
-        if torch.is_tensor(t):
-            return t / self.time_scale
-        else:
-            return t / self.time_scale
-
-    def __init__(self, input_size,  input_channels,                    config ):
+    def __init__(self,
+                 input_size,
+                 input_channels,
+                 time_scale,
+                 config):
         """
         """
         super().__init__()
         self.save_hyperparameters()
 
         # Data
-        self.input_channels = input_channels
         self.input_size = input_size
-        # Scaling time
-        self._norm_time = 1  # By default don't scale time
-        self._test_time = 1  # By default test on range [0, _test_time]
+        self.input_channels = input_channels
+        self.time_scale = time_scale            # Internal time scaling
 
         # Initialise encoder
         self.encoder_type = config.encoder.base.method.lower()
         if self.encoder_type == "wavelstm":
-            # Wavelet encoder
-            SourceSeparation.__init__(self,
-                                 input_size=self.input_size,
-                                 recursion_limit= config.encoder.waveLSTM.J,
-                                 wavelet= config.encoder.waveLSTM.wavelet)
-            self.encoder = SelfAttentiveEncoder(input_size=self.masked_width,
+            # WaveLSTM encoder
+            logging.info(f"Using WaveLSTM encoder for Counter Number Alteration encodings")
+            self.source_separation_layer = SourceSeparation(input_size=self.input_size,
+                                                            input_channels=self.input_channels,
+                                                            recursion_limit= config.encoder.waveLSTM.J,
+                                                            wavelet= config.encoder.waveLSTM.wavelet)
+            self.encoder = SelfAttentiveEncoder(input_size=self.source_separation_layer.masked_width,
                                                 input_channels=self.input_channels,
                                                 D=config.encoder.base.D,
                                                 **config.attention, **config.encoder.waveLSTM,
@@ -89,6 +70,7 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
             c_dim = (config.encoder.base.D * config.attention.r_hops)  + 2 # Number of encoded inputs to DeSurv
         elif self.encoder_type == "cnn":
             # CNN encoder
+            logging.info(f"Using CNN encoder for Counter Number Alteration encodings")
             # Same architecture as rcCAE. See: https://github.com/zhyu-lab/rccae/blob/main/cae/autoencoder.py
             k_size = 7
             self.encoder = nn.Sequential(
@@ -102,8 +84,9 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
                 nn.LazyLinear(out_features=config.encoder.base.D)
             )
             c_dim = config.encoder.base.D + 2# Number of encoded inputs to DeSurv
-        elif self.encoder_type== "lstm":
+        elif self.encoder_type == "lstm":
             # Uni-directional LSTM
+            logging.info(f"Using uni-directional LSTM encoder for Counter Number Alteration encodings")
             self.encoder = nn.LSTM(input_size=self.input_channels,
                                    hidden_size=config.encoder.lstm.hidden_size,
                                    proj_size=config.encoder.lstm.proj_size,
@@ -111,17 +94,21 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
                                    bidirectional=False,
                                    batch_first=True)
             self.encoder_outlayer = nn.LazyLinear(out_features=config.encoder.base.D)
-            c_dim = config.encoder.base.D + 2# Number of encoded inputs to DeSurv
+            c_dim = config.encoder.base.D + 2         # Number of encoded inputs to DeSurv
         elif self.encoder_type in ["average", "avg"]:
-            c_dim = 3# Number of encoded inputs to DeSurv
-        elif self.encoder_type == None:
+            # Average copy number
+            logging.info(f"Using average of Counter Number Alteration")
+            c_dim = 3   # Number of encoded inputs to DeSurv
+        elif self.encoder_type in ["none"]:
+            # Not using Copy Number Alterations
+            logging.info(f"Not using Counter Number Alterations")
             c_dim = 2   # Do not use CNA data
         else:
             raise NotImplementedError
 
         # Survival model
         hidden_dim = config.DeSurv.hidden  # Hidden dimension size inside ODE model
-        lr = np.inf                                          # This learning rate isnt used - just caveat of imported code
+        lr = np.inf                        # This learning rate isnt used - just consequence of DeSurv's code structure
         self.surv_model = ODESurvSingle(lr, c_dim, hidden_dim, device="gpu")
 
     def forward(self, x: torch.tensor, c: torch.tensor, t: torch.tensor, k: torch.tensor):
@@ -137,13 +124,13 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
         k: survival outcome
         """
         assert x.dim() == 3
-        t = self.transform_time(t)
+        t /= self.time_scale
         meta_data = {}
 
         # Whether we additionally include the CNA data
         if self.encoder_type == "wavelstm":
             # Input masking
-            masked_inputs, masked_targets = self.sequence_mask(self.scale(x))
+            masked_inputs, masked_targets = self.source_separation_layer(x)
             meta_data.update({
                 'scaled_masked_inputs': masked_inputs,
                 'scaled_masked_targets': masked_targets,
@@ -154,10 +141,10 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
             h = h.view(h.size(0), -1)                  # Flatten multi-resolution embeddings
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "cnn":
-            h = self.encoder(self.scale(x))
+            h = self.encoder(x)
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "lstm":
-            out, (hn, cn) = self.encoder(self.scale(x).permute(0, 2, 1))
+            out, (hn, cn) = self.encoder(x.permute(0, 2, 1))
             h = self.encoder_outlayer(cn[-1, :, :])
             # h = hn[-1, :, :]
             X = torch.concat((h, c), dim=1)
@@ -178,14 +165,14 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
         return {"loss": loss_survival / X.shape[0]}, meta_data
 
     def loss(self, batch: dict, batch_idx: int, diversity_coef=0):
-        x, t, k = batch['feature'], batch['survival_time'], batch['survival_status']
-        c = torch.stack((batch["days_since_birth"].to(device),
-                         torch.tensor([1 if i == "male" else 0 for i in batch['sex']], device=device)),
-                        dim=1)
+        x = batch['CNA']
+        c = batch["covariates"]
+        t = batch['survival_time']
+        k = batch['survival_status']
         losses, meta_data = self(x, c, t, k)
         loss = losses["loss"]
 
-        # Calculate diversity penalization - this is not used in the accompanying paper
+        # Calculate diversity penalization - note, this is not used in the paper
         #   promotes diversity between hops if r_hops > 1 and penality_coef > 0,
         if "attention" in meta_data.keys() and diversity_coef != 0:
             atn = meta_data["attention"]            # [bsz, rhops, J]
@@ -198,43 +185,41 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
 
     def training_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("train_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+        self.log("train_loss", losses["loss"], batch_size=batch["CNA"].shape[0],
                  prog_bar=True, logger=True, on_epoch=True)
         return losses["loss"]
 
     def validation_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("val_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+        self.log("val_loss", losses["loss"], batch_size=batch["CNA"].shape[0],
                  prog_bar=True, logger=True)
         return losses["loss"]
 
     def test_step(self, batch: dict, batch_idx: int):
         losses = self.loss(batch, batch_idx)
-        self.log("test_loss", losses["loss"], batch_size=batch["feature"].shape[0],
+        self.log("test_loss", losses["loss"], batch_size=batch["CNA"].shape[0],
                  prog_bar=True, logger=True)
         return losses["loss"]
 
-    def predict(self, x: torch.tensor, c: torch.tensor, t_eval: np.ndarray):
+    def predict(self, x: torch.tensor, c: torch.tensor, t: np.ndarray):
         """
         """
-        t_eval = self.transform_time(t_eval)
+        t_eval = t / self.time_scale
         pred_meta_data = {}
 
         # Whether we additionally include the CNA data
-        if self.encoder_type == "wavelstm":
-            # Input masking
-            masked_inputs, _ = self.sequence_mask(self.scale(x))
-            # Attentively encode
+        if self.encoder_type.lower() == "wavelstm":
+            # Input masking and then attentively encode separated resolutions
+            masked_inputs, _ = self.source_separation_layer(x)
             h, pred_meta_data = self.encoder(masked_inputs, pred_meta_data)  # [batch_size, attention-hops, resolution_embed_size]
             # Flatten multi-resolution embeddings
             h = h.view(h.size(0), -1)                               # [batch_size, attention-hops * resolution_embed_size]
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "cnn":
-            h = self.encoder(self.scale(x))
+            h = self.encoder(x)
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "lstm":
-            out, (hn, cn) = self.encoder(self.scale(x).permute(0, 2, 1))
-            # h = hn[-1, :, :]
+            out, (hn, cn) = self.encoder(x.permute(0, 2, 1))
             h = self.encoder_outlayer(cn[-1, :, :])
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type in ["average", "avg"]:
@@ -247,7 +232,7 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
         t_test = torch.tensor(np.concatenate([t_eval] * X.shape[0], 0), dtype=torch.float32, device=device)
         X_test = X.repeat_interleave(t_eval.size, 0).to(device, torch.float32)
 
-        # Cannot make all predictions at once due to memory constraints
+        # Batched predict: Cannot make all predictions at once due to memory constraints
         pred_batch = 16382                                                        # Predict in batches
         pred = []
         for X_test_batched, t_test_batched in zip(torch.split(X_test, pred_batch), torch.split(t_test, pred_batch)):
@@ -259,11 +244,11 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
 
     def configure_optimizers(self):
         """ For survival model have a different scheduler for the encoder parameters and the task head (DeSurv) params"""
-        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=0)
+        optimizer = optim.AdamW(self.parameters(), lr=1e-3)
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer, verbose=True, factor=0.5),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 3,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "frequency": 10,                     # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -273,32 +258,28 @@ class DeSurv(pl.LightningModule, ABC, SourceSeparation):
             "lr_scheduler": lr_scheduler_config
         }
 
-def create_desurv(data_module, test_data, val_data, cfg,
-                  dir_path="logs",
-                  gpus=1,
-                  ):
+def create_desurv(data_module, cfg, time_scale=1, gpus=1):
 
-    # pl.seed_everything(cfg.experiment.seed)
-
-    # Data parameters
-    labels = data_module.label_encoder.classes_
-    W=data_module.W               # Signal length
-    C=data_module.C             # Input channels
+    # Get validation and test hook batch
+    val_data = next(iter(data_module.val_dataloader()))
+    test_data = next(iter(data_module.test_dataloader()))
 
     # Create model
-    _model = DeSurv(input_size=W,  input_channels=C,                    config=cfg)
-    if cfg.experiment.verbose:
-        print(_model)
+    _model = DeSurv(input_size=data_module.W ,
+                    input_channels=data_module.C,
+                    time_scale=time_scale,
+                    config=cfg)
+    logging.debug(_model)
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
                                name=cfg.experiment.run_id,
                                job_type='train',
-                               save_dir=dir_path)
+                               save_dir="outputs")
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath=dir_path + "/checkpoints",
+        dirpath="outputs/checkpoints",
         filename=cfg.experiment.run_id,
         verbose=cfg.experiment.verbose,
         monitor="val_loss",
@@ -307,13 +288,14 @@ def create_desurv(data_module, test_data, val_data, cfg,
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
-        patience=1,
+        patience=5,
         verbose=cfg.experiment.verbose
     )
 
     # TODO: add this to the data module to avoid bugs getting order wrong
+    labels = data_module.labels
     label_dictionary = {key: val for key, val in zip([i for i in range(len(labels))], labels)}
-    print(label_dictionary)
+
     surv_metrics = survival.PerformanceMetrics(
         val_samples=val_data,
         test_samples=test_data
@@ -352,16 +334,16 @@ def create_desurv(data_module, test_data, val_data, cfg,
             label_dictionary=label_dictionary
         )
 
-        save_output = waveLSTM.SaveOutput(
-            test_samples=test_data,
-            file_path=cfg.experiment.save_file
-        )
+        # save_output = waveLSTM.SaveOutput(
+        #     test_samples=test_data,
+        #     file_path=cfg.experiment.save_file
+        # )
 
         # Add the wave-LSTM encoder callbacks
         callbacks += [viz_embedding_callback,
                       viz_multi_res_embed,
                       viz_attention,
-                      save_output
+                      # save_output
                       ]
 
     _trainer = pl.Trainer(
@@ -369,7 +351,7 @@ def create_desurv(data_module, test_data, val_data, cfg,
         callbacks=callbacks,
         max_epochs=cfg.experiment.num_epochs,
         log_every_n_steps=10,
-        check_val_every_n_epoch=3,
+        check_val_every_n_epoch=5,
         devices=gpus,
     )
 

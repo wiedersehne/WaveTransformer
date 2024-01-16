@@ -6,9 +6,9 @@ data:
 experiment:
   project_name: "WaveLSTM-surv"
   num_epochs: 200
-  run_id: deSurv_RecReLUAfter_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}_${experiment.seed}    # TODO: remove J and R reference for benchmarks
+  run_id: ${encoder.base.method}_${experiment.seed}    # TODO: remove J and R reference for benchmarks
   save_file: logs/${experiment.run_id}.pkl
-  train: True
+  train: False
   verbose: True
   seed: 42
 
@@ -19,22 +19,22 @@ attention:
 encoder:
   # Shared parameters
   base:
-    D: 1
+    D: 5
     method: waveLSTM
   # Method specific parameters
   waveLSTM:
     wavelet: haar
-    J: 5
+    J: 7
     layers: 1
-    hidden_channels: 32
-    proj_size: 1
-    kernel_size: 1
+    hidden_channels: 64
+    proj_size: 32
+#    kernel_size: 1
   cnn:
-    hidden_size: 32
+    hidden_size: 64
   lstm:
-        layers: 1
-        hidden_size: 32
-        proj_size: 1
+      layers: 1
+      hidden_size: 64
+      proj_size: 32
 
 DeSurv:
   hidden: 32

@@ -245,11 +245,9 @@ cython_debug/
 !/experiments/tst_model
 
 # Output files
-/experiments/demo/logs/
-/experiments/clonal_structures/logs/
-/experiments/ascat/logs/
-# hydra outputs
-/experiments/ascat/outputs/
-/experiments/demo/outputs/
-/experiments/clonal_structures/outputs/
+/experiments/SimClf/outputs/
+/experiments/SimSurv/outputs/
+/experiments/ClonalAE/outputs/
+/experiments/TCGA_Surv/outputs/
+
 

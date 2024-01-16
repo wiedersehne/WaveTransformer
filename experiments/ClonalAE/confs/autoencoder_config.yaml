@@ -4,12 +4,14 @@ data:
   stack: False
 
 experiment:
-  project_name: "WaveLSTM-attentive-autoencoder"
+  project_name: "WaveLSTM-AE"
   num_epochs: 75
-  run_id: clonal_${encoder.base.method}_J${encoder.waveLSTM.J}R${attention.r_hops}    # TODO: generalise this to benchmarks
-  save_file: logs/${experiment.run_id}.pkl
+  run_id: ${encoder.base.method}_${experiment.seed}
+  save_file: outputs/${experiment.run_id}.pkl
   train: True
   verbose: True
+  pool_targets: True
+  seed: 42
 
 attention:
   r_hops: 1
@@ -23,7 +25,7 @@ encoder:
   # Method specific parameters
   waveLSTM:
     wavelet: haar
-    J: 4
+    J: 8
     layers: 1
     hidden_channels: 256
     proj_size: 64

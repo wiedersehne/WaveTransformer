@@ -17,14 +17,12 @@ class BaseCallback(object):
 
         # Unpack validation hook set
         if val_samples is not None:
-            self.val_features = val_samples['feature']         # If we pass in val hook set, there must be features
+            self.val_features = val_samples['CNA']         # If we pass in val hook set, there must be features
             assert self.val_features.dim() == 3
             # Optional
             self.val_labels = val_samples['label'] if "label" in val_samples.keys() else None
             # Survival
-            c = torch.stack((val_samples["days_since_birth"],
-                             torch.tensor([1 if i == "male" else 0 for i in val_samples['sex']])), dim=1) \
-                if ("days_since_birth" in val_samples.keys()) and ("sex" in val_samples.keys()) else None
+            c =  val_samples['covariates'] if "covariates" in val_samples.keys() else None
             t =  val_samples['survival_time'] if "survival_time" in val_samples.keys() else None
             k =  val_samples['survival_status'] if "survival_status" in val_samples.keys() else None
             val_surv = {"c": c, "t": t, "k": k}
@@ -32,14 +30,12 @@ class BaseCallback(object):
 
         # Unpack test hook set
         if test_samples is not None:
-            self.test_features = test_samples['feature']       # If we pass in val hook set, there must be features
+            self.test_features = test_samples['CNA']       # If we pass in val hook set, there must be features
             assert self.test_features.dim() == 3
             # Optional
             self.test_labels = test_samples['label'] if "label" in test_samples.keys() else None
             # Survival
-            c = torch.stack((test_samples["days_since_birth"],
-                             torch.tensor([1 if i == "male" else 0 for i in test_samples['sex']])), dim=1) \
-                if ("days_since_birth" in test_samples.keys()) and ("sex" in test_samples.keys()) else None
+            c = test_samples['covariates'] if "covariates" in test_samples.keys() else None
             t = test_samples['survival_time'] if "survival_time" in test_samples.keys() else None
             k = test_samples['survival_status'] if "survival_status" in test_samples.keys() else None
             test_surv = {"c": c, "t": t, "k": k}

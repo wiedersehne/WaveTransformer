@@ -24,31 +24,37 @@ import logging
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
+class AttentiveClassifier(pl.LightningModule, ABC):
 
-    def __init__(self, input_size,  input_channels,                    num_classes, config ):
+    def __init__(self,
+                 input_size,
+                 input_channels,
+                 num_classes,
+                 config ):
 
         super().__init__()
         self.save_hyperparameters()
 
         # Data
-        self.input_channels = input_channels
         self.input_size = input_size
+        self.input_channels = input_channels
 
-        SourceSeparation.__init__(self,
-                             input_size=self.input_size,
-                             recursion_limit=config.encoder.waveLSTM.J,
-                             wavelet=config.encoder.waveLSTM.wavelet)
-        self.encoder = SelfAttentiveEncoder(input_size=self.masked_width,
+        self.source_separation_layer = SourceSeparation(input_size=self.input_size,
+                                                        input_channels=self.input_channels,
+                                                        recursion_limit=config.encoder.waveLSTM.J,
+                                                        wavelet=config.encoder.waveLSTM.wavelet)
+        self.encoder = SelfAttentiveEncoder(input_size=self.source_separation_layer.masked_width,
                                             input_channels=self.input_channels,
                                             D=config.encoder.base.D,
                                             **config.attention, **config.encoder.waveLSTM,
                                             )
 
         # Classifier network
-        self.clf_net = nn.Sequential(nn.LazyLinear(config.classifier.nfc),
+        self.clf_net = nn.Sequential(nn.Linear(in_features=config.encoder.base.D,
+                                               out_features=config.classifier.nfc),
                                      nn.Tanh(),
-                                     nn.LazyLinear(config.classifier.nfc),
+                                     nn.Linear(in_features=config.classifier.nfc,
+                                               out_features=config.classifier.nfc),
                                      nn.Tanh(),
                                      nn.LazyLinear(num_classes))
         self.criterion = nn.CrossEntropyLoss()
@@ -58,16 +64,14 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         assert x.dim() == 3
 
         # Input masking
-        _, masked_targets = self.sequence_mask(x)
-
-        scaled_masked_inputs, _ = self.sequence_mask(self.scale(x))
+        masked_inputs, masked_targets = self.source_separation_layer(x)
         meta_data = {
-            'masked_inputs': scaled_masked_inputs,
+            'masked_inputs': masked_inputs,
             'masked_targets': masked_targets,
         }
 
         # Attentively encode
-        output, meta_data = self.encoder(scaled_masked_inputs, meta_data)
+        output, meta_data = self.encoder(masked_inputs, meta_data)
         meta_data.update({"M": output})                                 # [batch_size, attention-hops, resolution_embed_size]
         output = output.view(output.size(0), -1)                        # [batch_size, attention-hops * resolution_embed_size]
 
@@ -98,7 +102,7 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
                 'acc': acc}                              # Accuracy
 
     def training_step(self, batch, batch_idx):
-        sequences, targets = batch['feature'], batch['label']
+        sequences, targets = batch['CNA'], batch['label']
         pred_t, meta_results = self(sequences)
         train_loss_dict = self.loss_function(targets, pred_t, meta=meta_results)
         self.log("train_loss", train_loss_dict['loss'], prog_bar=True, logger=True)
@@ -106,7 +110,7 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         return train_loss_dict['loss']
 
     def validation_step(self, batch, batch_idx):
-        sequences, targets = batch['feature'], batch['label']
+        sequences, targets = batch['CNA'], batch['label']
         pred_t, meta_results = self(sequences)
         val_loss_dict = self.loss_function(targets, pred_t, meta=meta_results)
         self.log("val_loss", val_loss_dict['loss'], prog_bar=True, logger=True)
@@ -114,7 +118,7 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         return val_loss_dict['loss']
 
     def test_step(self, batch, batch_idx):
-        sequences, targets = batch['feature'], batch['label']
+        sequences, targets = batch['CNA'], batch['label']
         pred_t, meta_results = self(sequences)
         test_loss_dict = self.loss_function(targets, pred_t, meta=meta_results)
         self.log("test_loss", test_loss_dict['loss'], prog_bar=True, logger=True)
@@ -122,7 +126,7 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         return test_loss_dict['loss']
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters())
+        optimizer = optim.AdamW(self.parameters())
         lr_scheduler_config = {
             "scheduler": ReduceLROnPlateau(optimizer),         # The scheduler instance
             "interval": "epoch",                               # The unit of the scheduler's step size
@@ -137,17 +141,14 @@ class AttentiveClassifier(pl.LightningModule, ABC, SourceSeparation):
         }
 
 
-def create_classifier(classes, data_module, cfg,
-                      dir_path="logs",
-                      gpus=1,
-                      ):
+def create_classifier(classes, data_module, cfg, gpus=1):
 
     # Get validation and test hook batch
     val_data = next(iter(data_module.val_dataloader()))
     test_data = next(iter(data_module.test_dataloader()))
 
-    _model = AttentiveClassifier(input_size=data_module.W,
-                                 input_channels=data_module.C,
+    _model = AttentiveClassifier(input_size=512,
+                                 input_channels=2,
                                  num_classes=len(classes),
                                  config=cfg)
     logging.debug(_model)
@@ -156,12 +157,12 @@ def create_classifier(classes, data_module, cfg,
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
                                name=cfg.experiment.run_id,
                                job_type='train',
-                               save_dir=dir_path
+                               save_dir="outputs"
                                )
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath=dir_path + "/checkpoints",
+        dirpath="outputs/checkpoints",
         filename=cfg.experiment.run_id,
         verbose=cfg.experiment.verbose,
         monitor="val_loss",
@@ -174,6 +175,7 @@ def create_classifier(classes, data_module, cfg,
         verbose=cfg.experiment.verbose,
     )
 
+    # TODO: add this to the data module to avoid bugs getting order wrong
     label_dictionary = {key: val for key, val in zip([i for i in range(len(classes))], classes)}
 
     viz_embedding_callback = waveLSTM.ResolutionEmbedding(
@@ -193,17 +195,17 @@ def create_classifier(classes, data_module, cfg,
         test_samples=test_data
     )
 
-    save_output = waveLSTM.SaveOutput(
-        test_samples=test_data,
-        file_path=cfg.experiment.save_file
-    )
+    # save_output = waveLSTM.SaveOutput(
+    #     test_samples=test_data,
+    #     file_path=cfg.experiment.save_file
+    # )
 
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_embedding_callback,
                  viz_multi_res_embed,
                  viz_attention,
-                 save_output
+                 # save_output
                  ]
 
     _trainer = pl.Trainer(

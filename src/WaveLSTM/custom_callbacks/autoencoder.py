@@ -26,7 +26,7 @@ class RecurrentReconstruction(Callback, BaseCallback):
         features = np.asarray(features.detach().cpu())
         labels = np.asarray(labels.detach().cpu(), dtype=np.int)
         masked_targets = [np.asarray(x.detach().cpu()) for x in meta_result['masked_targets']]
-        masked_recons = [np.asarray(_pl_module.unscale(x).detach().cpu()) for x in meta_result['masked_predictions']]
+        masked_recons = [np.asarray(x.detach().cpu()) for x in meta_result['masked_predictions']]
 
         _trainer.logger.experiment.log({
             log_name + "-right":
@@ -66,7 +66,6 @@ class Reconstruction(Callback, BaseCallback):
 
         # Push features through the model
         recon, meta_result = _pl_module(features.clone())
-        recon = _pl_module.unscale(recon)
 
         features = np.asarray(features.detach().cpu())
         labels = np.asarray(labels.detach().cpu(), dtype=np.int)

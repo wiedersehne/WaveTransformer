@@ -8,38 +8,42 @@ from torch import nn
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class WaveletBase(object):
+class WaveletBase(nn.Module):
 
     @property
     def normalize_stats(self):
-        return self.mu_features, self.std_features
+        raise NotImplementedError
+        # return self.mu_features, self.std_features
 
     @normalize_stats.setter
     def normalize_stats(self, stats):
-        for stat in stats:
-            assert stat.dim() == 2
-            assert stat.size(0) == self.input_channels
-            assert stat.size(1) == self.input_size
-        self.mu_features = stats[0].to(device)
-        self.std_features = stats[1].to(device)
+        raise NotImplementedError
+        # for stat in stats:
+        #     assert stat.dim() == 2
+        #     assert stat.size(0) == self.input_channels
+        #     assert stat.size(1) == self.input_size
+        # self.mu_features = stats[0].to(device)
+        # self.std_features = stats[1].to(device)
 
     def scale(self, features):
-        assert features.dim() == 3, features.dim()
-        if (self.mu_features is not None) and (self.std_features is not None):
-            batch_mu = torch.concat([self.mu_features[None, :, :] for _ in range(features.size(0))], 0)
-            batch_std = torch.concat([self.std_features[None, :, :] for _ in range(features.size(0))], 0)
-            features -= batch_mu
-            features /= batch_std
-        return features
+        raise NotImplementedError
+        # assert features.dim() == 3, features.dim()
+        # if (self.mu_features is not None) and (self.std_features is not None):
+        #     batch_mu = torch.concat([self.mu_features[None, :, :] for _ in range(features.size(0))], 0)
+        #     batch_std = torch.concat([self.std_features[None, :, :] for _ in range(features.size(0))], 0)
+        #     features -= batch_mu
+        #     features /= batch_std
+        # return features
 
     def unscale(self, normalized_features):
-        assert normalized_features.dim() == 3, normalized_features.dim()
-        if (self.mu_features is not None) and (self.std_features is not None):
-            batch_mu = torch.concat([self.mu_features[None, :, :] for _ in range(normalized_features.size(0))], 0)
-            batch_std = torch.concat([self.std_features[None, :, :] for _ in range(normalized_features.size(0))], 0)
-            normalized_features *= batch_std
-            normalized_features += batch_mu
-        return normalized_features
+        raise NotImplementedError
+        # assert normalized_features.dim() == 3, normalized_features.dim()
+        # if (self.mu_features is not None) and (self.std_features is not None):
+        #     batch_mu = torch.concat([self.mu_features[None, :, :] for _ in range(normalized_features.size(0))], 0)
+        #     batch_std = torch.concat([self.std_features[None, :, :] for _ in range(normalized_features.size(0))], 0)
+        #     normalized_features *= batch_std
+        #     normalized_features += batch_mu
+        # return normalized_features
 
     def sequence_mask(self, x, pool_targets=False):
         """
@@ -101,9 +105,9 @@ class WaveletBase(object):
 
         return masked_inputs, masked_targets
 
-    def __init__(self, input_size, recursion_limit=None, wavelet="haar"):
-        self.mu_features = None
-        self.std_features = None
+    def __init__(self, input_size, input_channels, recursion_limit=None, wavelet="haar"):
+        super().__init__()
+
         self.wavelet = wavelet
         self.input_size = input_size
 
@@ -118,5 +122,9 @@ class WaveletBase(object):
         self.alpha_lengths = [b.shape[-1] for b in _bank]
         self.masked_width = pywt.waverec(_bank[:self.J], self.wavelet).shape[-1]
 
-        # self.masked_width = int(2 ** (self.J - 1))  # For Haar wavelet, TODO: update for wavelets of different decomposition length
+        self.batch_norms = [nn.BatchNorm1d(num_features=input_channels, device=device) for _ in range(self.J)]
 
+    def forward(self, input, **kwargs):
+        masked_inputs, masked_targets = self.sequence_mask(input, **kwargs)
+        masked_inputs = [self.batch_norms[j](masked_inputs[j]) for j in range(self.J)]
+        return masked_inputs, masked_targets
