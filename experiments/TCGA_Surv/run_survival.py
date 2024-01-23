@@ -2,9 +2,10 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 import torch
 import numpy as np
-import logging
+from sklearn import preprocessing
 from TCGA.data_modules.ascat.loaders import ASCATDataModule, ASCATDataset
 from WaveLSTM.models.DeSurv import create_desurv, DeSurv
+import logging
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,13 +15,14 @@ def run_wavelet_desurv(cfg : DictConfig):
     torch.manual_seed(cfg.experiment.seed)
 
     # Make dataloader
-    dm = ASCATDataModule(**cfg.data)
+    dm = ASCATDataModule(**cfg.data, scaler=preprocessing.MinMaxScaler())
 
     # Make model
     max_times = [np.max([b["survival_time"].max() for b in iter(loader)]) for loader in [dm.train_dataloader(),
                                                                                          dm.val_dataloader(),
                                                                                          dm.test_dataloader()
                                                                                          ]]
+    print(max_times)
     model, trainer = create_desurv(data_module=dm, cfg=cfg, time_scale=np.max(max_times))
 
     if cfg.experiment.train:

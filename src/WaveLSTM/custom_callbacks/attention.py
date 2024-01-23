@@ -69,8 +69,8 @@ class Attention(Callback, BaseCallback):
         # fig.suptitle(f'Attention heatmap {"(hops stacked)" if stack else "(hops averaged)"}')
 
         # Plot prediction and truth
-        vmax = np.min((5, features.max()))
-        vmin = np.min((1, features.min()))
+        vmax = features.max() # np.min((5, features.max()))
+        vmin = features.min() # np.min((1, features.min()))
         sns.heatmap(features, ax=ax1, cmap='Blues', vmin=vmin, vmax=vmax, yticklabels=labels)
         ax1.set_title(f'True signal')
         sns.heatmap(attention, ax=ax2, cmap='Blues', vmin=0, yticklabels=False)   # vmax=1

@@ -64,10 +64,10 @@ class DeSurv(pl.LightningModule, ABC):
             self.encoder = SelfAttentiveEncoder(input_size=self.source_separation_layer.masked_width,
                                                 input_channels=self.input_channels,
                                                 D=config.encoder.base.D,
-                                                **config.attention, **config.encoder.waveLSTM,
+                                                **config.encoder.waveLSTM,
                                                 )
              # Number of encoded inputs to DeSurv
-            c_dim = (config.encoder.base.D * config.attention.r_hops)  + 2 # Number of encoded inputs to DeSurv
+            c_dim = (config.encoder.base.D * config.encoder.waveLSTM.r_hops) + 2 # Number of encoded inputs to DeSurv
         elif self.encoder_type == "cnn":
             # CNN encoder
             logging.info(f"Using CNN encoder for Counter Number Alteration encodings")
@@ -106,6 +106,9 @@ class DeSurv(pl.LightningModule, ABC):
         else:
             raise NotImplementedError
 
+        # De-noising dropout on encoded latent variables
+        self.dropout = nn.Dropout(config.encoder.base.dropout) if config.encoder.base.dropout is not None else None
+
         # Survival model
         hidden_dim = config.DeSurv.hidden  # Hidden dimension size inside ODE model
         lr = np.inf                        # This learning rate isnt used - just consequence of DeSurv's code structure
@@ -139,13 +142,16 @@ class DeSurv(pl.LightningModule, ABC):
             h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, resolution_embed_size]
             meta_data.update({"M": h})
             h = h.view(h.size(0), -1)                  # Flatten multi-resolution embeddings
+            h = self.dropout(h) if self.dropout is not None else h
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "cnn":
             h = self.encoder(x)
+            h = self.dropout(h) if self.dropout is not None else h
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type == "lstm":
             out, (hn, cn) = self.encoder(x.permute(0, 2, 1))
             h = self.encoder_outlayer(cn[-1, :, :])
+            h = self.dropout(h) if self.dropout is not None else h
             # h = hn[-1, :, :]
             X = torch.concat((h, c), dim=1)
         elif self.encoder_type in ["average", "avg"]:
@@ -292,10 +298,9 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
         verbose=cfg.experiment.verbose
     )
 
-    # TODO: add this to the data module to avoid bugs getting order wrong
-    labels = data_module.labels
-    label_dictionary = {key: val for key, val in zip([i for i in range(len(labels))], labels)}
-
+    cancer_names = data_module.label_encoder.classes_
+    label = data_module.label_encoder.transform(cancer_names)
+    label_dictionary = {key: val for key, val in zip(label, cancer_names)}
     surv_metrics = survival.PerformanceMetrics(
         val_samples=val_data,
         test_samples=test_data

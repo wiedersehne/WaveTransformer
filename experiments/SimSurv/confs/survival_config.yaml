@@ -10,10 +10,6 @@ experiment:
   verbose: True
   seed: 42
 
-attention:
-  r_hops: 10
-  attention_unit: 350
-
 encoder:
   # Shared parameters
   base:
@@ -23,6 +19,8 @@ encoder:
   waveLSTM:
     wavelet: haar
     J: 7
+    r_hops: 10
+    attention_unit: 350
     layers: 1
     hidden_channels: 64
     proj_size: 32
