@@ -294,7 +294,7 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
         min_delta=0,
-        patience=5,
+        patience=cfg.experiment.early_stopping,
         verbose=cfg.experiment.verbose
     )
 
@@ -356,7 +356,7 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
         callbacks=callbacks,
         max_epochs=cfg.experiment.num_epochs,
         log_every_n_steps=10,
-        check_val_every_n_epoch=5,
+        check_val_every_n_epoch=2,
         devices=gpus,
     )
 

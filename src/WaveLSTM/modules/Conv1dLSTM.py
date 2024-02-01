@@ -81,7 +81,7 @@ class Conv1dLSTMCell(nn.Module):
         self.padding = kernel_size // 2
         self.bias = bias
 
-        self.dropout = nn.Dropout(dropout) if dropout is not None else None
+        self.dropout = nn.Dropout1d(dropout) if dropout is not None else None
         self.conv = nn.Conv1d(in_channels=self.input_channels + self.real_hidden_channels,
                               out_channels=4 * self.hidden_channels,
                               kernel_size=self.kernel_size,
@@ -118,6 +118,8 @@ class Conv1dLSTMCell(nn.Module):
         h_next = o * torch.tanh(c_next)
 
         if self.proj_size > 0:
+            if self.dropout is not None:
+                h_next = self.dropout(h_next)
             h_next = self.recurrent_output(h_next)                       # (N, real_hidden_channels, width)
 
         if self.dropout is not None:
@@ -224,8 +226,8 @@ class Conv1dLSTM(nn.Module):
                  hidden_channels: int = 128,
                  kernel_size :int = 7,
                  num_layers: int = 1,
-                 bias : bool =True,
-                 proj_size:int =0,
+                 bias : bool = True,
+                 proj_size:int = 0,
                  dropout: Optional[float] = None,
                  ):
 

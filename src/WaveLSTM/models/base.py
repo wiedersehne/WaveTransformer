@@ -105,7 +105,7 @@ class WaveletBase(nn.Module):
 
         return masked_inputs, masked_targets
 
-    def __init__(self, input_size, input_channels, recursion_limit=None, wavelet="haar"):
+    def __init__(self, input_size, input_channels, recursion_limit=None, wavelet="haar", batch_norm=True):
         super().__init__()
 
         self.wavelet = wavelet
@@ -121,10 +121,14 @@ class WaveletBase(nn.Module):
         _bank = pywt.wavedec(np.zeros((1, 1, self.input_size)), self.wavelet, level=self.max_detail_spaces)
         self.alpha_lengths = [b.shape[-1] for b in _bank]
         self.masked_width = pywt.waverec(_bank[:self.J], self.wavelet).shape[-1]
-
-        self.batch_norms = [nn.BatchNorm1d(num_features=input_channels, device=device) for _ in range(self.J)]
+        
+        if batch_norm:
+            self.batch_norms = [nn.BatchNorm1d(num_features=input_channels, device=device) for _ in range(self.J)]
+        else:
+            self.batch_norms = None
 
     def forward(self, input, **kwargs):
         masked_inputs, masked_targets = self.sequence_mask(input, **kwargs)
-        masked_inputs = [self.batch_norms[j](masked_inputs[j]) for j in range(self.J)]
+        if self.batch_norms is not None:
+            masked_inputs = [self.batch_norms[j](masked_inputs[j]) for j in range(self.J)]
         return masked_inputs, masked_targets

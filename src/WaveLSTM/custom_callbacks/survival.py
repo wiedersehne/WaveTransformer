@@ -44,7 +44,7 @@ class PerformanceMetrics(Callback, BaseCallback):
         ibs = ev.integrated_brier_score(time_grid)          # Integrated Brier Score
         inbll = ev.integrated_nbll(time_grid)               # Integrated Negative Binomial LogLikelihood
         # mae, rmse = self.get_mae_rmse()
-
+        
         # Log all
         self.log_dict({log_name + "ctd": ctd,
                        log_name + "ibs": ibs,

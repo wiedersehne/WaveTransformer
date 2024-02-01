@@ -12,7 +12,9 @@ logging.basicConfig(level=logging.INFO)
 @hydra.main(version_base=None, config_path="confs", config_name="survival_config")
 def run_wavelet_desurv(cfg : DictConfig):
 
+    print(f"Setting seed to {cfg.experiment.seed}")
     torch.manual_seed(cfg.experiment.seed)
+    torch.set_float32_matmul_precision('medium')
 
     # Make dataloader
     dm = ASCATDataModule(**cfg.data, scaler=preprocessing.MinMaxScaler())

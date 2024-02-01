@@ -46,11 +46,11 @@ class AttentiveClassifier(pl.LightningModule, ABC):
         self.encoder = SelfAttentiveEncoder(input_size=self.source_separation_layer.masked_width,
                                             input_channels=self.input_channels,
                                             D=config.encoder.base.D,
-                                            **config.attention, **config.encoder.waveLSTM,
+                                            **config.encoder.waveLSTM,
                                             )
 
         # Classifier network
-        self.clf_net = nn.Sequential(nn.Linear(in_features=config.encoder.base.D,
+        self.clf_net = nn.Sequential(nn.Linear(in_features=config.encoder.base.D * config.encoder.waveLSTM.r_hops,
                                                out_features=config.classifier.nfc),
                                      nn.Tanh(),
                                      nn.Linear(in_features=config.classifier.nfc,

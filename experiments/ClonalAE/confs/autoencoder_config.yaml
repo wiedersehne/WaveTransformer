@@ -4,7 +4,7 @@ data:
   stack: False
 
 experiment:
-  project_name: "WaveLSTM-AE"
+  project_name: "WaveLSTM-ClonalAE"
   num_epochs: 75
   run_id: ${encoder.base.method}_${experiment.seed}
   save_file: outputs/${experiment.run_id}.pkl

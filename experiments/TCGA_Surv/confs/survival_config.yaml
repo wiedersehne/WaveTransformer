@@ -2,40 +2,39 @@ data:
   batch_size: 256
   cancer_types:  ['THCA', 'BRCA', 'OV', 'GBM', 'HNSC']
   chrom_as_channels: True
-  cna_clip: 3
+  # cna_clip: 3                      # Optionally you can clip high CNAs by their standard deviation. We do not do this
 
 experiment:
-  project_name: "WaveLSTM-surv"
+  project_name: "WaveLSTM-SurvTCGA"
   num_epochs: 200
-  run_id: ${encoder.base.method}_${experiment.seed}
-  save_file: logs/${experiment.run_id}.pkl
+  run_id: ${encoder.base.method}_h${encoder.waveLSTM.hidden_channels}_p${encoder.waveLSTM.proj_size}
+  save_file: logs/${experiment.run_id}_${experiment.seed}.pkl
   train: True
   verbose: True
   seed: 42
+  early_stopping: 5
 
 encoder:
   # Shared parameters
   base:
-    D: 5
+    D: 1
     method: waveLSTM
-    dropout: 0.2
-  # Method specific parameters
+    dropout: 0.0                    # de-noising dropout on the encoder embedding 
   waveLSTM:
     wavelet: haar
     J: 5
-    r_hops: 1
-    attention_unit: 350
+    r_hops: 5
+    attention_unit: 35
     layers: 1
-    hidden_channels: 2
-    proj_size: 0
-#    kernel_size: 3
+    hidden_channels: 32
+    proj_size: 1                    
+    dropout: 0.5                     # dropout applied on entire channels after each Conv1dLSTMCell layer
   cnn:
-    hidden_size: 64
+    # Default is rcCAE's encoder architecture
   lstm:
       layers: 1
-      hidden_size: 64
-      proj_size: 0
+      hidden_size: ${encoder.waveLSTM.hidden_channels}
+      proj_size: 0                  # ${encoder.waveLSTM.proj_size}
 
 DeSurv:
   hidden: 32
-

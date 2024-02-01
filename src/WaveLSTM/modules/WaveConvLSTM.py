@@ -30,7 +30,7 @@ class WaveletConv1dLSTM(nn.Module):
         hidden_channels (int):
             The number of channels of the cell state. Default ``128``.
         kernel_size (int):
-            Size of the convolutional kernel. Default ``3``.
+            Size of the convolutional kernel. Default ``7``.
         bias (bool):
             Whether to add the bias to convolutions. Default ``True``.
         proj_size (int):
@@ -68,7 +68,7 @@ class WaveletConv1dLSTM(nn.Module):
                  layers: int = 1,
                  proj_size: int = 0,
                  kernel_size: int = 7,
-                 dropout: Optional[float] =None,
+                 dropout: Optional[float] = None,
                  resolution_embed_size: int = 128,
                  ):
         """
@@ -80,7 +80,6 @@ class WaveletConv1dLSTM(nn.Module):
         self.resolution_embed_size = resolution_embed_size
 
         # LSTM
-        # self.bn = torch.nn.BatchNorm1d(self.real_hidden_channels)
         self.rnn = Conv1dLSTM(input_channels=self.input_channels,
                               hidden_channels=hidden_channels,
                               kernel_size=kernel_size,
@@ -94,6 +93,7 @@ class WaveletConv1dLSTM(nn.Module):
             nn.Flatten(),
             nn.LazyLinear(out_features=self.resolution_embed_size),
             # nn.ReLU(),
+            # nn.Dropout(dropout if dropout is not None else 0)
         )
             for _ in range(J)]
         self.non_recurrent_output = nn.ModuleList(non_recurrent_output)
@@ -110,6 +110,8 @@ class WaveletConv1dLSTM(nn.Module):
 
         # Output layer
         output = output[:, -1, :, :]                                # Take the last time_step
+        # output = output[:, -1, :, -1]                             # Take the last time_step
+
         resolution_embedding = self.non_recurrent_output[j](output)
 
         return resolution_embedding, (h_next, c_next)
