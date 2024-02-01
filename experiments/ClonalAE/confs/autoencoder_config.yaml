@@ -1,16 +1,16 @@
 data:
   batch_size: 32
   chr_length: 256
-  stack: False
+  stack: True
 
 experiment:
   project_name: "WaveLSTM-ClonalAE"
   num_epochs: 75
-  run_id: ${encoder.base.method}_${experiment.seed}
-  save_file: outputs/${experiment.run_id}.pkl
+  run_id: ${encoder.base.method}_h${encoder.waveLSTM.hidden_channels}_p${encoder.waveLSTM.proj_size}_stack${data.stack}
+  save_file: outputs/${experiment.run_id}_${experiment.seed}.pkl
   train: True
   verbose: True
-  pool_targets: True
+  pool_targets: False
   seed: 42
 
 attention:
@@ -25,7 +25,7 @@ encoder:
   # Method specific parameters
   waveLSTM:
     wavelet: haar
-    J: 8
+    J: 8     # consider higher
     layers: 1
     hidden_channels: 256
     proj_size: 64
