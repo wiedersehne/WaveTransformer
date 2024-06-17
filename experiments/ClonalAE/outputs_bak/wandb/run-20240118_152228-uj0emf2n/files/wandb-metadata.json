@@ -1,0 +1,325 @@
+{
+    "os": "Linux-4.18.0-372.32.1.el8_6.x86_64-x86_64-with-glibc2.28",
+    "python": "3.10.4",
+    "heartbeatAt": "2024-01-18T15:22:29.182638",
+    "startedAt": "2024-01-18T15:22:28.235718",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/rds/homes/g/gaddcz/Projects/waveletVAE/experiments/ClonalAE/run_attentive_autoencoders.py",
+    "codePath": "experiments/ClonalAE/run_attentive_autoencoders.py",
+    "git": {
+        "remote": "https://github.com/cwlgadd/waveletVAE.git",
+        "commit": "1c3dfadf8cfabee4cc85f3a59850657d3bfb3533"
+    },
+    "email": "cwlgadd@gmail.com",
+    "root": "/rds/homes/g/gaddcz/Projects/waveletVAE",
+    "host": "bear-pg0103u01a.bear.cluster",
+    "username": "gaddcz",
+    "executable": "/rds/homes/g/gaddcz/Projects/waveletVAE/my-virtual-env-icelake/bin/python",
+    "cpu_count": 56,
+    "cpu_count_logical": 56,
+    "cpu_freq": {
+        "current": 3.095428571428568,
+        "min": 3100.0,
+        "max": 3100.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.05,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        },
+        {
+            "current": 3.1,
+            "min": 3100.0,
+            "max": 3100.0
+        }
+    ],
+    "disk": {
+        "total": 19.982421875,
+        "used": 5.218944549560547
+    },
+    "gpu": "NVIDIA A100-PCIE-40GB",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA A100-PCIE-40GB",
+            "memory_total": 42949672960
+        }
+    ],
+    "memory": {
+        "total": 503.54238510131836
+    }
+}

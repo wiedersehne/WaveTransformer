@@ -34,10 +34,10 @@ class Attention(Callback, BaseCallback):
         permute_idx = np.argsort(labels)
         features = features[permute_idx, :].detach().cpu()
         labels = np.asarray(labels[permute_idx].detach().cpu(), dtype=np.int)
-        attention = attention[permute_idx, :, :].detach().cpu()
+        attention = attention[permute_idx, :, :]
 
         # Decide how we want to view over the hops
-        attention = torch.mean(attention, dim=1)     # average over attention hops:   [batch_size, num_multiscales]
+        attention = np.mean(attention, axis=1)     # average over attention hops:   [batch_size, num_multiscales]
 
         # Nested ordering by <order_method> on attention matrix
         attention_new = np.zeros_like(attention)
@@ -133,9 +133,8 @@ class MultiResolutionEmbedding(Callback, BaseCallback):
         wandb_images = []
 
         # Multi-resolution plot
-        M = meta_result["M"]                        # [batch_size, attention-hops, scale_embed_dim]
-        Mbar = torch.mean(M, dim=1)                 # average over attention hops:   [batch_size, scale_embed_dim]
-        Mbar = np.asarray(Mbar.detach().cpu())
+        M = meta_result["M"]                      # [batch_size, attention-hops, scale_embed_dim]
+        Mbar = np.mean(M, axis=1)                 # average over attention hops:   [batch_size, scale_embed_dim]
 
         # Plot depends on shape of latent dimension
         if Mbar.shape[1] == 1:

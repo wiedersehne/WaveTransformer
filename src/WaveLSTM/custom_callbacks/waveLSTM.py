@@ -31,7 +31,7 @@ class ResolutionEmbedding(Callback, BaseCallback):
         wandb_images = []
         for level, hj in enumerate(meta_result['resolution_embeddings']):
 
-            hj = np.asarray(hj.detach().cpu())
+            hj = np.asarray(hj)
 
             # Plot depends on shape of latent dimension
             if hj.shape[1] == 1:

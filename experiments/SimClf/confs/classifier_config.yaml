@@ -17,8 +17,8 @@ encoder:
     method: waveLSTM
   # Method specific parameters
   waveLSTM:
-    wavelet: haar
-    J: 7
+    wavelet: haar                   #  supported discrete examples: "haar", "dbN", "symN", "biorN", "rbioN","dmey". We use a PyTorch extension of the pywt package which should support discrete wavelets found here: https://pywavelets.readthedocs.io/en/latest/regression/wavelet.html
+    J: 10
     r_hops: 1
     attention_unit: 350
     layers: 1

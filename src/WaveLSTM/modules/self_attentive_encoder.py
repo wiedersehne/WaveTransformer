@@ -60,7 +60,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
         """
 
         hidden, meta_data = self.encoder(masked_inputs, meta_data)
-        meta_data.update({'resolution_embeddings': hidden})
+        meta_data.update({'resolution_embeddings': [_hidden.detach().cpu().numpy() for _hidden in hidden]})
 
         hidden = torch.stack(hidden, dim=1)
         size = hidden.size()                                           # [batch_size, num_multiscales, n_hidden]
@@ -72,7 +72,7 @@ class SelfAttentiveEncoder(pl.LightningModule, ABC):
 
         alphas = self.softmax(alphas.view(-1, size[1]))                # [batch_size * attention-hops, num_multiscales]
         alphas = alphas.view(size[0], self.attention_hops, size[1])    # [batch_size, attention-hops, num_multiscales]
-        meta_data.update({"attention": alphas})                        # A in Bengio's self-attention paper
+        meta_data.update({"attention": alphas.detach().cpu().numpy()})                        # A in Bengio's self-attention paper
 
         M = torch.bmm(alphas, hidden)                                  # [batch_size, attention-hops, n_hidden]
 

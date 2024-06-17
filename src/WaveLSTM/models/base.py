@@ -56,7 +56,7 @@ class WaveletBase(nn.Module):
 
         j>J are removed from the filter bank, effectively applying an average pooling operation.
 
-        return: Down-sampled source-separated input signals, and
+        return: Down-sampled source-seShowparated input signals, and
                 Filtered and down-sampled target signal
         """
         assert x.dim() == 3, x.size()
@@ -67,7 +67,7 @@ class WaveletBase(nn.Module):
         for j in range(self.J):
             X_j = torch.zeros((x.size(0), x.size(1), self.masked_width if pool_inputs else x.size(2)), device=device)
             for c in range(x.shape[1]):
-                # Filter bank over channel sequence
+                # Filter bank over channel sequence                
                 full_bank = ptwt.wavedec(x[:, c, :], self.wavelet, mode='zero', level=self.max_detail_spaces)
                 # Mask (see doc string) wavelet coefficients alpha_j
                 masked_bank = [alpha_i if i == j else torch.zeros_like(alpha_i) for i, alpha_i in enumerate(full_bank)]
@@ -75,7 +75,6 @@ class WaveletBase(nn.Module):
                 trunc_bank = masked_bank[:self.J]
                 # Reconstruct source-separated input
                 X_j[:, c, :] = ptwt.waverec(trunc_bank if pool_inputs else masked_bank, self.wavelet)
-
             masked_inputs.append(X_j)
 
         # Targets (sequence of IWT(alpha_1, ...., alpha_j) for j={1,2,3...}).
@@ -131,4 +130,5 @@ class WaveletBase(nn.Module):
         masked_inputs, masked_targets = self.sequence_mask(input, **kwargs)
         if self.batch_norms is not None:
             masked_inputs = [self.batch_norms[j](masked_inputs[j]) for j in range(self.J)]
+
         return masked_inputs, masked_targets

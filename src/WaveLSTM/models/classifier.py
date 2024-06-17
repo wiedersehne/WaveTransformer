@@ -66,14 +66,14 @@ class AttentiveClassifier(pl.LightningModule, ABC):
         # Input masking
         masked_inputs, masked_targets = self.source_separation_layer(x)
         meta_data = {
-            'masked_inputs': masked_inputs,
-            'masked_targets': masked_targets,
+            'masked_inputs': [m_i.detach().cpu().numpy() for m_i in masked_inputs],
+            'masked_targets':[m_t.detach().cpu().numpy() for m_t in masked_targets],
         }
 
         # Attentively encode
         output, meta_data = self.encoder(masked_inputs, meta_data)
-        meta_data.update({"M": output})                                 # [batch_size, attention-hops, resolution_embed_size]
-        output = output.view(output.size(0), -1)                        # [batch_size, attention-hops * resolution_embed_size]
+        meta_data.update({"M": output.detach().cpu().numpy()})                        # [batch_size, attention-hops, resolution_embed_size]
+        output = output.view(output.size(0), -1)                                      # [batch_size, attention-hops * resolution_embed_size]
 
         # Decode
         pred = self.clf_net(output)
@@ -83,11 +83,11 @@ class AttentiveClassifier(pl.LightningModule, ABC):
     def loss_function(self, targets, pred_t, meta) -> dict:
 
         bsz = targets.shape[0]                   # batch size
-        atn = meta["attention"]
 
         # Classifier loss
         clf_loss = self.criterion(pred_t, targets)
-
+        
+        # atn = meta["attention"]
         # Calculate penalization (promotes diversity in hops)
         # atn_t = torch.transpose(atn, 1, 2).contiguous()
         # eye = torch.stack([torch.eye(self.encoder.attention_hops) for _ in range(bsz)], dim=0)
@@ -195,17 +195,17 @@ def create_classifier(classes, data_module, cfg, gpus=1):
         test_samples=test_data
     )
 
-    # save_output = waveLSTM.SaveOutput(
-    #     test_samples=test_data,
-    #     file_path=cfg.experiment.save_file
-    # )
+    save_output = waveLSTM.SaveOutput(
+        test_samples=test_data,
+        file_path=cfg.experiment.save_file
+    )
 
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_embedding_callback,
                  viz_multi_res_embed,
                  viz_attention,
-                 # save_output
+                 save_output
                  ]
 
     _trainer = pl.Trainer(
