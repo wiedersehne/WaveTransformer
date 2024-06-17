@@ -99,24 +99,25 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC):
         masked_inputs, masked_targets = self.source_separation_layer(x, pool_targets=self.pool_targets)
         # - second for the input sequence for the waveLSTM encoder
         meta_data = {
-            'masked_inputs': masked_inputs,
-            'masked_targets': masked_targets,
+            'masked_inputs': [m_i.detach().cpu().numpy() for m_i in masked_inputs],
+            'masked_targets': [m_t.detach().cpu().numpy() for m_t in masked_targets],
+            'masked_targets_tensor': masked_targets,
         }
 
         # Attentively encode
         M, meta_data = self.encoder(masked_inputs, meta_data)
-        meta_data.update({"M": M})                                 # [batch_size, attention-hops, resolution_embed_size]
+        meta_data.update({"M": M.detach().cpu().numpy()})                                 # [batch_size, attention-hops, resolution_embed_size]
 
         # Decode
-        recon = self.decoder(M)                                    # [batch_size, channels, width]
-        meta_data.update({'masked_predictions': [recon],
+        recon = self.decoder(M)                                                           # [batch_size, channels, width]
+        meta_data.update({'masked_predictions': [recon.detach().cpu().numpy()],
                           })
 
         return recon, meta_data
 
     def loss(self, batch, batch_idx, filter=True) -> dict:
         recon, meta_results = self(batch['CNA'])
-        target = meta_results["masked_targets"][-1] if filter else batch['CNA']
+        target = meta_results["masked_targets_tensor"][-1] if filter else batch['CNA']
         return {'loss': F.mse_loss(torch.flatten(recon, start_dim=1),
                                    torch.flatten(target, start_dim=1))
                 }

@@ -1,11 +1,9 @@
 from omegaconf import DictConfig, OmegaConf
 import hydra
 import torch
-import numpy as np
 import logging
 from TCGA.data_modules.CHISEL_S0E.loaders import DataModule, Dataset
 from WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder, AttentiveAutoEncoder
-
 
 @hydra.main(version_base=None, config_path="confs", config_name="autoencoder_config")
 def run_CHISEL(cfg : DictConfig):
@@ -15,7 +13,7 @@ def run_CHISEL(cfg : DictConfig):
     # Make dataloader
     dm = DataModule(**cfg.data)
     print(f"width {dm.W}, channels {dm.C}")
-
+    
     # Make model
     model, trainer = create_sa_autoencoder(data_module=dm, cfg=cfg)
 
