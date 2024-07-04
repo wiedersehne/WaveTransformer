@@ -68,7 +68,7 @@ class DeSurv(pl.LightningModule, ABC):
                                                 )
              # Number of encoded inputs to DeSurv
             c_dim = (config.encoder.base.D * config.encoder.waveLSTM.r_hops) + 2 # Number of encoded inputs to DeSurv
-        elif self.encoder_type == "cnn":
+        elif self.encoder_type in ["cnn", "multiscale_cnn"]:
             # CNN encoder
             logging.info(f"Using CNN encoder for Counter Number Alteration encodings")
             # Same architecture as rcCAE. See: https://github.com/zhyu-lab/rccae/blob/main/cae/autoencoder.py
@@ -104,6 +104,7 @@ class DeSurv(pl.LightningModule, ABC):
             logging.info(f"Not using Counter Number Alterations")
             c_dim = 2   # Do not use CNA data
         else:
+            logging.warning(f"Encoder type {config.encoder.base.method} is not supported")
             raise NotImplementedError
 
         # De-noising dropout on encoded latent variables
@@ -135,12 +136,12 @@ class DeSurv(pl.LightningModule, ABC):
             # Input masking
             masked_inputs, masked_targets = self.source_separation_layer(x)
             meta_data.update({
-                'scaled_masked_inputs': masked_inputs,
-                'scaled_masked_targets': masked_targets,
+                'masked_inputs': [m_i.detach().cpu().numpy() for m_i in masked_inputs],
+                'masked_targets':[m_t.detach().cpu().numpy() for m_t in masked_targets],
             })
             # Attentively encode
             h, meta_data = self.encoder(masked_inputs, meta_data)  # h: [batch_size, attention-hops, resolution_embed_size]
-            meta_data.update({"M": h})
+            meta_data.update({"M": h.detach().cpu().numpy()})
             h = h.view(h.size(0), -1)                  # Flatten multi-resolution embeddings
             h = self.dropout(h) if self.dropout is not None else h
             X = torch.concat((h, c), dim=1)
@@ -163,7 +164,7 @@ class DeSurv(pl.LightningModule, ABC):
             raise NotImplementedError
 
         # Survival
-        meta_data.update({"ode_input": X})
+        meta_data.update({"ode_input": X.detach().cpu().numpy()})
         loss_survival = self.surv_model(X.type(torch.float32).to(device),
                                         t.type(torch.float32).to(device),
                                         k.type(torch.float32).to(device))
@@ -281,11 +282,11 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
                                name=cfg.experiment.run_id,
                                job_type='train',
-                               save_dir="outputs")
+                               save_dir=cfg.experiment.output_dir)
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath="outputs/checkpoints",
+        dirpath=f"{cfg.experiment.output_dir}checkpoints/",
         filename=cfg.experiment.run_id,
         verbose=cfg.experiment.verbose,
         monitor="val_loss",

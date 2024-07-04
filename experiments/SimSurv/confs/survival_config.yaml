@@ -3,6 +3,7 @@ data:
 
 experiment:
   project_name: "WaveLSTM-SimSurv"
+  output_dir:   "/rds/projects/s/subramaa-mum-predict/CharlesGadd_Oxford/waveLSTMoutput/SimSurvOutput/"
   num_epochs: 200
   run_id: ${encoder.base.method}_h${encoder.waveLSTM.hidden_channels}_p${encoder.waveLSTM.proj_size}
   save_file: logs/${experiment.run_id}_${experiment.seed}.pkl
@@ -25,14 +26,14 @@ encoder:
     attention_unit: 35
     layers: 1
     hidden_channels: 64
-    proj_size: 5                     # ${encoder.base.D}
+    proj_size: 5 # 0                     # ${encoder.base.D}
     dropout: 0.5                     # dropout applied on entire channels after each Conv1dLSTMCell layer
   cnn:
 
   lstm:
       layers: 1
       hidden_size: ${encoder.waveLSTM.hidden_channels}
-      proj_size: ${encoder.waveLSTM.proj_size}
+      proj_size: 0 # ${encoder.waveLSTM.proj_size}
 
 DeSurv:
   hidden: 32
