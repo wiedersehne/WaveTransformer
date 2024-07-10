@@ -157,12 +157,12 @@ def create_classifier(classes, data_module, cfg, gpus=1):
     wandb_logger = WandbLogger(project=cfg.experiment.project_name,
                                name=cfg.experiment.run_id,
                                job_type='train',
-                               save_dir="outputs"
+                               save_dir=cfg.experiment.output_dir
                                )
 
     # Make all callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath="outputs/checkpoints",
+        dirpath=f"{cfg.experiment.output_dir}checkpoints",
         filename=cfg.experiment.run_id,
         verbose=cfg.experiment.verbose,
         monitor="val_loss",

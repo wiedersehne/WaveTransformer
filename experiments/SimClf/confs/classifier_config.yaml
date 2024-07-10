@@ -1,8 +1,12 @@
+hydra:  
+  output_subdir: null  
+
 data:
   batch_size: 256
 
 experiment:
   project_name: "WaveLSTM-clf"
+  output_dir:   "./"
   num_epochs: 30
   run_id: ${encoder.base.method}_${experiment.seed}
   save_file: outputs/${experiment.run_id}.pkl
