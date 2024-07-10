@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR, LambdaLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR, LambdaLR, CosineAnnealingLR
 # PyTorch-lightning
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
@@ -51,6 +51,7 @@ class DeSurv(pl.LightningModule, ABC):
         self.input_size = input_size
         self.input_channels = input_channels
         self.time_scale = time_scale            # Internal time scaling
+        self.config = config
 
         # Initialise encoder
         self.encoder_type = config.encoder.base.method.lower()
@@ -252,10 +253,14 @@ class DeSurv(pl.LightningModule, ABC):
     def configure_optimizers(self):
         """ For survival model have a different scheduler for the encoder parameters and the task head (DeSurv) params"""
         optimizer = optim.AdamW(self.parameters(), lr=1e-3)
+        if not self.config.experiment.anneal_lr:
+            scheduler = ReduceLROnPlateau(optimizer, verbose=True, factor=0.5)
+        else:
+            scheduler = CosineAnnealingLR(optimizer, T_max=int(1000 / self.config.data.batch_size), eta_min=1e-3 / 10)
         lr_scheduler_config = {
-            "scheduler": ReduceLROnPlateau(optimizer, verbose=True, factor=0.5),         # The scheduler instance
-            "interval": "epoch",                               # The unit of the scheduler's step size
-            "frequency": 10,                     # How many epochs/steps should pass between calls to `scheduler.step()`
+            "scheduler": scheduler,             # The scheduler instance
+            "interval": "epoch",                # The unit of the scheduler's step size
+            "frequency": 10,                    # How many epochs/steps should pass between calls to `scheduler.step()`
             "monitor": "val_loss",              # Metric to monitor for scheduler
             "strict": True,                     # Enforce that "val_loss" is available when the scheduler is updated
             "name": 'LearningRateMonitor',      # For `LearningRateMonitor`, specify a custom logged name
@@ -291,6 +296,8 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
         verbose=cfg.experiment.verbose,
         monitor="val_loss",
     )
+        
+    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss", mode="min",
@@ -317,6 +324,7 @@ def create_desurv(data_module, cfg, time_scale=1, gpus=1):
     )
 
     callbacks = [checkpoint_callback,
+                 lr_monitor,
                  early_stop_callback,
                  surv_metrics,
                  viz_KM,

@@ -1,3 +1,6 @@
+hydra:  
+  output_subdir: null  
+
 data:
   batch_size: 256
   cancer_types:  ['THCA', 'BRCA', 'OV', 'GBM', 'HNSC']
@@ -6,6 +9,7 @@ data:
 
 experiment:
   project_name: "WaveLSTM-SurvTCGA"
+  output_dir:   "./"
   num_epochs: 200
   run_id: ${encoder.base.method}_h${encoder.waveLSTM.hidden_channels}_p${encoder.waveLSTM.proj_size}
   save_file: logs/${experiment.run_id}_${experiment.seed}.pkl
@@ -13,6 +17,7 @@ experiment:
   verbose: True
   seed: 42
   early_stopping: 5
+  anneal_lr: True
 
 encoder:
   # Shared parameters
@@ -34,7 +39,7 @@ encoder:
   lstm:
       layers: 1
       hidden_size: ${encoder.waveLSTM.hidden_channels}
-      proj_size: 0                  # ${encoder.waveLSTM.proj_size}
+      proj_size: 0
 
 DeSurv:
   hidden: 32
