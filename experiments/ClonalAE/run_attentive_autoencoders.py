@@ -2,10 +2,14 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 import torch
 import logging
-from TCGA.data_modules.CHISEL_S0E.loaders import DataModule, Dataset
-from WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder, AttentiveAutoEncoder
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from src.TCGA.data_modules.CHISEL_S0E.loaders import DataModule, Dataset
+# from src.WaveLSTM.models.attentive_autoencoder import create_sa_autoencoder, AttentiveAutoEncoder
+from src.WaveTransformer.models.autoencoder import create_sa_autoencoder, AttentiveAutoEncoder
 
-@hydra.main(version_base=None, config_path="confs", config_name="autoencoder_config")
+@hydra.main(version_base=None, config_path="confs", config_name="autoencoder_transformer_config")
 def run_CHISEL(cfg : DictConfig):
 
     torch.manual_seed(cfg.experiment.seed)

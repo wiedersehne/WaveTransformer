@@ -1,0 +1,40 @@
+hydra:  
+  output_subdir: null  
+
+data:
+  batch_size: 256
+  cancer_types:  ['ACC' , 'CESC' ,'CHOL', 'COAD', 'DLBC'] # ,'ESCA', 'GBM', 'HNSC' ,'KICH' ,'KIRC' ,'KIRP' ,'LAML', 'LGG' ,'LIHC', 'LUAD' ,'LUSC' ,'MESO', 'OV' ,'PAAD', 'PCPG' ,'PRAD', 'READ', 'SARC', 'SKCM' ,'STAD' ,'TGCT', 'THCA' ,'THYM', 'UCEC', 'UCS', 'UVM']
+
+experiment:
+  project_name: "WaveLSTM-clfTCGA"
+  output_dir:   "./"
+  num_epochs: 30
+  run_id: ${encoder.base.method}_h${encoder.waveLSTM.hidden_channels}_p${encoder.waveLSTM.proj_size}
+  save_file: logs1/${experiment.run_id}_${experiment.seed}.pkl
+  train: True
+  verbose: True
+  seed: 202
+  early_stopping: 5
+  anneal_lr: True
+
+encoder:
+  # Shared parameters
+  base:
+    D: 10
+    method: waveLSTM
+    dropout: 0.0
+  # Method specific parameters
+  waveLSTM:
+    wavelet: haar                   #  supported discrete examples: "haar", "dbN", "symN", "biorN", "rbioN","dmey". We use a PyTorch extension of the pywt package which should support discrete wavelets found here: https://pywavelets.readthedocs.io/en/latest/regression/wavelet.html
+    J: 5
+    r_hops: 1
+    attention_unit: 350
+    layers: 1
+    hidden_channels: 256
+    proj_size: 1                     # ${encoder.base.D}
+
+classifier:
+  nfc: 256
+
+
+

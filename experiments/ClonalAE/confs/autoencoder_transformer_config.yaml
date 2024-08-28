@@ -1,0 +1,49 @@
+data:
+  batch_size: 32
+  chr_length: 256
+  stack: False
+
+experiment:
+  project_name: "WaveLSTM-ClonalAE"
+  num_epochs: 75
+  run_id: ${encoder.base.method}_p${encoder.cnn.in_channel}_h${encoder.cnn.out_channel}_stack${data.stack}
+  save_file: outputs/${experiment.run_id}_${experiment.seed}.pkl
+  train: True
+  verbose: True
+  pool_targets: False
+  seed: 42
+
+attention:
+  r_hops: 1
+  attention_unit: 350
+
+encoder:
+  base:
+    input_length: 256
+    input_size: 5632
+    method: transformer
+  cnn:
+    in_channel: 44
+    out_channel: 1
+  transformer:
+    nhead: 2
+    dim: 32
+  wave:
+    wavelet: haar
+    J: 8     # consider higher
+    layers: 1
+    hidden_channels: 256
+    proj_size: 64
+
+decoder:
+  base:
+    method: linear
+  rccae:
+
+  fc:
+
+
+
+
+
+

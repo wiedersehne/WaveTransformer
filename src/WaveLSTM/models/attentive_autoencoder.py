@@ -94,6 +94,9 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC):
         """
         assert x.dim() == 3
 
+        print(x.shape)
+        # print(x[0][0])
+
         # Input masking. Perform IWT twice
         # - first for if we want to reconstruct with filterered targets (see loss: default False)
         masked_inputs, masked_targets = self.source_separation_layer(x, pool_targets=self.pool_targets)
@@ -112,10 +115,12 @@ class AttentiveAutoEncoder(pl.LightningModule, ABC):
         recon = self.decoder(M)                                                           # [batch_size, channels, width]
         meta_data.update({'masked_predictions': [recon.detach().cpu().numpy()],
                           })
+        
+        print(recon.shape)
 
         return recon, meta_data
 
-    def loss(self, batch, batch_idx, filter=True) -> dict:
+    def loss(self, batch, batch_idx, filter=False) -> dict:
         recon, meta_results = self(batch['CNA'])
         target = meta_results["masked_targets_tensor"][-1] if filter else batch['CNA']
         return {'loss': F.mse_loss(torch.flatten(recon, start_dim=1),

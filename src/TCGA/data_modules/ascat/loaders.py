@@ -11,6 +11,9 @@ from sklearn_pandas import DataFrameMapper
 import pytorch_lightning as pl
 import os
 import re
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../')))
 from abc import ABC
 from tqdm import tqdm
 import numpy as np
@@ -18,7 +21,7 @@ import random
 import pandas as pd
 import pyarrow.feather as feather
 
-from TCGA.data_modules.utils.helpers import get_chr_base_pair_lengths as chr_lengths
+from src.TCGA.data_modules.utils.helpers import get_chr_base_pair_lengths as chr_lengths
 
 
 pl.seed_everything(42)
@@ -414,7 +417,7 @@ class ASCATDataset(Dataset):
 
         return {'covariates': baseline_covariates.float(),
                 'CNA': count_numbers.float(),
-                'label': torch.tensor(label).float(),
+                'label': torch.tensor(label),
                 'survival_time': torch.tensor(surv_time).float(),
                 'survival_status': torch.tensor(surv_status).float(),
                 }

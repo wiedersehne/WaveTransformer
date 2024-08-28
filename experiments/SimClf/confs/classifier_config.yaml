@@ -30,7 +30,7 @@ encoder:
     proj_size: 5                     # ${encoder.base.D}
 
 classifier:
-  nfc: 256
+  nfc: 512
 
 
 

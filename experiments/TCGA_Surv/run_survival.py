@@ -1,10 +1,14 @@
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from src.WaveLSTM.models.DeSurv import create_desurv, DeSurv
 from omegaconf import DictConfig, OmegaConf
 import hydra
 import torch
 import numpy as np
 from sklearn import preprocessing
-from TCGA.data_modules.ascat.loaders import ASCATDataModule, ASCATDataset
-from WaveLSTM.models.DeSurv import create_desurv, DeSurv
+from src.TCGA.data_modules.ascat.loaders import ASCATDataModule, ASCATDataset
+from src.WaveLSTM.models.classifier import create_classifier, AttentiveClassifier
 import logging
 
 logging.basicConfig(level=logging.INFO)

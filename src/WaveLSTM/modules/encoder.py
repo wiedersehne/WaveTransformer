@@ -2,10 +2,13 @@ from abc import ABC
 import torch
 import pytorch_lightning as pl
 import numpy as np
-import ptwt
+# import ptwt
 import pywt
 from torch import nn
-from WaveLSTM.modules.WaveConvLSTM import WaveletConv1dLSTM
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from src.WaveLSTM.modules.WaveConvLSTM import WaveletConv1dLSTM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

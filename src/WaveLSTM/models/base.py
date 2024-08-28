@@ -60,7 +60,7 @@ class WaveletBase(nn.Module):
                 Filtered and down-sampled target signal
         """
         assert x.dim() == 3, x.size()
-        pool_inputs = True
+        pool_inputs = False
 
         # Masked inputs
         masked_inputs = []
@@ -128,6 +128,7 @@ class WaveletBase(nn.Module):
 
     def forward(self, input, **kwargs):
         masked_inputs, masked_targets = self.sequence_mask(input, **kwargs)
+        # print(masked_inputs.shape)
         if self.batch_norms is not None:
             masked_inputs = [self.batch_norms[j](masked_inputs[j]) for j in range(self.J)]
 

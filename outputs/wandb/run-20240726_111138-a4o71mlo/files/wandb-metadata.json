@@ -1,0 +1,368 @@
+{
+    "os": "Linux-5.14.0-427.13.1.el9_4.x86_64-x86_64-with-glibc2.34",
+    "python": "3.10.4",
+    "heartbeatAt": "2024-07-26T09:11:39.307799",
+    "startedAt": "2024-07-26T09:11:38.183737",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "encoder.base.method=cnn",
+        "experiment.seed=2"
+    ],
+    "state": "running",
+    "program": "/cluster/home/tonyu/VE_Pretraining/waveLSTM/./experiments/ClonalAE/run_attentive_autoencoders.py",
+    "codePath": "experiments/ClonalAE/run_attentive_autoencoders.py",
+    "git": {
+        "remote": "git@github.com:cwlgadd/waveLSTM.git",
+        "commit": "eecac12ccc64556ae5c934e03604260503d920e7"
+    },
+    "email": "wiedersehne@gmail.com",
+    "root": "/cluster/home/tonyu/VE_Pretraining/waveLSTM",
+    "host": "idun-05-06",
+    "username": "tonyu",
+    "executable": "/cluster/home/tonyu/.conda/envs/gunther/bin/python",
+    "cpu_count": 64,
+    "cpu_count_logical": 64,
+    "cpu_freq": {
+        "current": 2837.636937500004,
+        "min": 0.0,
+        "max": 0.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3709.404,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3717.206,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2794.695,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3705.759,
+            "min": 0.0,
+            "max": 0.0
+        }
+    ],
+    "disk": {
+        "total": 892.32177734375,
+        "used": 25.275833129882812
+    },
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA A100-SXM4-80GB",
+            "memory_total": 85899345920
+        }
+    ],
+    "memory": {
+        "total": 1006.9918022155762
+    }
+}

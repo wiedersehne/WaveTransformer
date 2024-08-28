@@ -59,7 +59,7 @@ class AttentiveClassifier(pl.LightningModule, ABC):
                                      nn.LazyLinear(num_classes))
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(self, x: torch.tensor):
+    def forward(self, x: torch.tensor, **kwargs):
 
         assert x.dim() == 3
 
@@ -72,6 +72,7 @@ class AttentiveClassifier(pl.LightningModule, ABC):
 
         # Attentively encode
         output, meta_data = self.encoder(masked_inputs, meta_data)
+        print(output.shape)
         meta_data.update({"M": output.detach().cpu().numpy()})                        # [batch_size, attention-hops, resolution_embed_size]
         output = output.view(output.size(0), -1)                                      # [batch_size, attention-hops * resolution_embed_size]
 
@@ -147,8 +148,8 @@ def create_classifier(classes, data_module, cfg, gpus=1):
     val_data = next(iter(data_module.val_dataloader()))
     test_data = next(iter(data_module.test_dataloader()))
 
-    _model = AttentiveClassifier(input_size=512,
-                                 input_channels=2,
+    _model = AttentiveClassifier(input_size=data_module.W,
+                                 input_channels=data_module.C,
                                  num_classes=len(classes),
                                  config=cfg)
     logging.debug(_model)
@@ -195,17 +196,17 @@ def create_classifier(classes, data_module, cfg, gpus=1):
         test_samples=test_data
     )
 
-    save_output = waveLSTM.SaveOutput(
-        test_samples=test_data,
-        file_path=cfg.experiment.save_file
-    )
+    # save_output = waveLSTM.SaveOutput(
+    #     test_samples=test_data,
+    #     file_path=cfg.experiment.save_file
+    # )
 
     callbacks = [checkpoint_callback,
                  early_stop_callback,
                  viz_embedding_callback,
                  viz_multi_res_embed,
                  viz_attention,
-                 save_output
+                #  save_output
                  ]
 
     _trainer = pl.Trainer(

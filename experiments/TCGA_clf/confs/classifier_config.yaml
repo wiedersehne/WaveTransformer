@@ -1,0 +1,38 @@
+hydra:  
+  output_subdir: null  
+
+data:
+  batch_size: 256
+  cancer_types:  ['ACC' , 'CESC' ,'CHOL', 'COAD', 'DLBC'] # ,'ESCA', 'GBM', 'HNSC' ,'KICH' ,'KIRC' ,'KIRP' ,'LAML', 'LGG' ,'LIHC', 'LUAD' ,'LUSC' ,'MESO', 'OV' ,'PAAD', 'PCPG' ,'PRAD', 'READ', 'SARC', 'SKCM' ,'STAD' ,'TGCT', 'THCA' ,'THYM', 'UCEC', 'UCS', 'UVM']
+
+experiment:
+  project_name: "WaveLSTM-clfTCGA"
+  output_dir:   "./"
+  num_epochs: 30
+  run_id: ${encoder.base.method}_h${encoder.cnns.out_channel}_p${classifier.hidden_dimension1}
+  save_file: logs1/${experiment.run_id}_${experiment.seed}.pkl
+  train: True
+  verbose: True
+  seed: 202
+  early_stopping: 5
+  anneal_lr: True
+
+encoder:
+  base:
+    input_length: 256
+    input_size: 46
+    method: cnn
+  cnns:
+    in_channel: 64
+    out_channel: 64
+    kernels: [3, 7, 13]
+    layers: 1
+
+
+classifier:
+  num_classes: 5
+  hidden_dimension1: 256
+  hidden_dimension2: 64
+
+
+

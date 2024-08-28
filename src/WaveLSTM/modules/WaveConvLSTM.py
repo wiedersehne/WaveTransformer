@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import Optional
-from WaveLSTM.modules.Conv1dLSTM import Conv1dLSTM
+from src.WaveLSTM.modules.Conv1dLSTM import Conv1dLSTM
 
 
 class WaveletConv1dLSTM(nn.Module):

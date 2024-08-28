@@ -1,0 +1,168 @@
+{
+    "os": "Linux-5.14.0-427.13.1.el9_4.x86_64-x86_64-with-glibc2.34",
+    "python": "3.10.4",
+    "heartbeatAt": "2024-08-01T09:16:04.308618",
+    "startedAt": "2024-08-01T09:16:03.387656",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "encoder.base.method=transformer",
+        "experiment.seed=7"
+    ],
+    "state": "running",
+    "program": "/cluster/home/tonyu/VE_Pretraining/waveLSTM/./experiments/ClonalAE/run_attentive_autoencoders.py",
+    "codePath": "experiments/ClonalAE/run_attentive_autoencoders.py",
+    "git": {
+        "remote": "git@github.com:cwlgadd/waveLSTM.git",
+        "commit": "eecac12ccc64556ae5c934e03604260503d920e7"
+    },
+    "email": "wiedersehne@gmail.com",
+    "root": "/cluster/home/tonyu/VE_Pretraining/waveLSTM",
+    "host": "idun-06-13",
+    "username": "tonyu",
+    "executable": "/cluster/home/tonyu/.conda/envs/gunther/bin/python",
+    "cpu_count": 24,
+    "cpu_count_logical": 24,
+    "cpu_freq": {
+        "current": 2.8807499999999995,
+        "min": 1200.0,
+        "max": 2900.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2.438,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        },
+        {
+            "current": 2.9,
+            "min": 1200.0,
+            "max": 2900.0
+        }
+    ],
+    "disk": {
+        "total": 111.234375,
+        "used": 19.83157730102539
+    },
+    "gpu": "Tesla V100-PCIE-16GB",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Tesla V100-PCIE-16GB",
+            "memory_total": 17179869184
+        }
+    ],
+    "memory": {
+        "total": 125.29568099975586
+    }
+}
