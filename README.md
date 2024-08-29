@@ -12,4 +12,9 @@ msCNN and waveTransformer
 
 ## notebook
 
-To visualize the attention maps and features from different resolutions: ### experiments/ClonalAE/notebook/attention_notebook.ipynb
+To visualize the attention maps and features from different resolutions: 
+### experiments/ClonalAE/notebook/attention_notebook.ipynb
+
+## slides
+
+https://docs.google.com/presentation/d/1_lMFyUzrKEEgvJS_wORm3tFPWSKnycfEBGduk6NW6hk/edit#slide=id.g220625a933e_0_0
