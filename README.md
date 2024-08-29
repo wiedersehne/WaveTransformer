@@ -13,7 +13,8 @@ msCNN and waveTransformer
 ## notebook
 
 To visualize the attention maps and features from different resolutions: 
-#### experiments/ClonalAE/notebook/attention_notebook.ipynb
+1. download the checkpoint from :
+2. run experiments/ClonalAE/notebook/attention_notebook.ipynb
 
 ## slides
 
