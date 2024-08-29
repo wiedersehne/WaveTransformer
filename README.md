@@ -10,6 +10,8 @@ msCNN and waveTransformer
 
 *[ClonalAE with waveTransformer](https://wandb.ai/genome_pretraining/WaveLSTM-ClonalAE/runs/1cn3jfmm?nw=nwusertonyu)
 
+*[ClonalAE with waveCNN](https://wandb.ai/genome_pretraining/WaveLSTM-ClonalAE/runs/1gp03rlk?nw=nwusertonyu)
+
 *[TCGA Classification with waveCNN](https://wandb.ai/genome_pretraining/WaveLSTM-clfTCGA/runs/19putmdc?nw=nwusertonyu)
 
 ## notebook
