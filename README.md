@@ -6,6 +6,8 @@ msCNN and waveTransformer
 
 ## experiments
 
+*[Configurations](experiments/ClonalAE/notebook/attention_notebook.ipynb)
+
 *[ClonalAE with waveTransformer](https://wandb.ai/genome_pretraining/WaveLSTM-ClonalAE/runs/1cn3jfmm?nw=nwusertonyu)
 
 *[TCGA Classification with waveCNN](https://wandb.ai/genome_pretraining/WaveLSTM-clfTCGA/runs/19putmdc?nw=nwusertonyu)
