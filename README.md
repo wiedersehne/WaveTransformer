@@ -1,5 +1,9 @@
-# Wave-LSTM  
+# Wave-Transformer/CNN  
 
-<!--- python run_classifier.py <!--- -f <path_to>/<config_file>.yaml -->
+## models
+
+## experiments
+
+## notebook
 
 
