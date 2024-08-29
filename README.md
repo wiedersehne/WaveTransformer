@@ -6,7 +6,7 @@ msCNN and waveTransformer
 
 ## experiments
 
-*[Configurations](experiments/ClonalAE/notebook/attention_notebook.ipynb)
+*[Configurations](experiments/ClonalAE/confs)
 
 *[ClonalAE with waveTransformer](https://wandb.ai/genome_pretraining/WaveLSTM-ClonalAE/runs/1cn3jfmm?nw=nwusertonyu)
 
