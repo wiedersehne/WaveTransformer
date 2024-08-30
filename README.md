@@ -17,8 +17,8 @@ msCNN and waveTransformer
 ## notebook
 
 To visualize the attention maps and features from different resolutions: 
-1. download the checkpoint from :
-2. run experiments/ClonalAE/notebook/attention_notebook.ipynb
+1. run experiments/ClonalAE/run_attentive_autoencoders.py to get saved outputs.
+2. run experiments/ClonalAE/notebook/attention_notebook.ipynb.
 
 ## slides
 
